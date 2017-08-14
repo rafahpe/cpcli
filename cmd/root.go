@@ -21,7 +21,6 @@ import (
 	"path/filepath"
 
 	homedir "github.com/mitchellh/go-homedir"
-	"github.com/rafahpe/cpcli/lib"
 	"github.com/rafahpe/cpcli/model"
 	"github.com/spf13/cobra"
 	// Using this forst instead of the original because of write file support
@@ -67,12 +66,13 @@ func Execute() {
 
 type options struct {
 	PageSize    int
-	Mac         lib.MAC
-	Args        []string
+	Mac         string
 	SkipHeaders bool
+	Args        []string
 }
 
 var globalOptions options
+var globalClearpass model.Clearpass
 
 func init() {
 	cobra.OnInitialize(initConfig)
@@ -90,14 +90,13 @@ func init() {
 	RootCmd.PersistentFlags().IntP("pagesize", "p", 10, "Pagesize of the requests")
 
 	// Flags that are shared by several commands.
-	RootCmd.PersistentFlags().StringP("mac", "m", "", "MAC address to filter by, if supported")
+	RootCmd.PersistentFlags().StringVarP(&(globalOptions.Mac), "mac", "m", "", "MAC address to filter by, if supported")
 	RootCmd.PersistentFlags().BoolVarP(&(globalOptions.SkipHeaders), "skip-headers", "H", false, "Skip headers when dumping CSV")
 
 	viper.BindPFlag("server", RootCmd.PersistentFlags().Lookup("server"))
 	viper.BindPFlag("client", RootCmd.PersistentFlags().Lookup("client"))
 	viper.BindPFlag("token", RootCmd.PersistentFlags().Lookup("token"))
 	viper.BindPFlag("pagesize", RootCmd.PersistentFlags().Lookup("pagesize"))
-
 }
 
 // initConfig reads in config file and ENV variables if set.
@@ -132,6 +131,11 @@ func initConfig() {
 			log.Fatal("initConfig Error: ", err)
 		}
 	}
+
+	// Init the connection to clearpass
+	server := viper.GetString("server")
+	token := viper.GetString("token")
+	globalClearpass = model.NewClearpass(server, token)
 }
 
 func primeConfigFile(cfgFile string) {
@@ -144,25 +148,10 @@ func primeConfigFile(cfgFile string) {
 	defer fd.Close()
 }
 
-func login() error {
-	server := viper.GetString("server")
-	client := viper.GetString("client")
-	token := viper.GetString("token")
-	if server == "" || client == "" || token == "" {
-		return ErrMissingCreds
-	}
-	model.CPPM().SetCredentials(server, client, token)
-	return nil
-}
-
 // Simplifies getting common options
 func getOptions(cmd *cobra.Command, args []string) options {
 	result := globalOptions
 	result.PageSize = viper.GetInt("pagesize")
 	result.Args = args
-	mac := RootCmd.PersistentFlags().Lookup("mac")
-	if mac != nil && mac.Value != nil && mac.Value.String() != "" {
-		result.Mac = lib.NewMAC(mac.Value.String())
-	}
 	return result
 }

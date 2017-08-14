@@ -34,7 +34,7 @@ func (c *clearpass) Login(ip, clientID, secret string) (string, error) {
 	}
 	reply := &authReply{}
 	ctx := context.Background()
-	if err := Post(ctx, fullURL, "", query, reply); err != nil {
+	if err := post(ctx, fullURL, "", query, reply); err != nil {
 		return "", err
 	}
 	c.url = baseURL
@@ -48,7 +48,7 @@ func (c *clearpass) Validate(ip, clientID, token string) error {
 	fullURL := baseURL + "api-client/" + url.PathEscape(clientID)
 	reply := &lib.Reply{}
 	ctx := context.Background()
-	if err := Get(ctx, fullURL, token, nil, reply); err != nil {
+	if err := get(ctx, fullURL, token, nil, reply); err != nil {
 		return err
 	}
 	c.url = baseURL

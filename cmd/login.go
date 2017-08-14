@@ -18,7 +18,6 @@ import (
 	"fmt"
 
 	"github.com/rafahpe/cpcli/lib"
-	"github.com/rafahpe/cpcli/model"
 	"github.com/spf13/cobra"
 	// Using this forst instead of the original because of write file support
 	// See: https://github.com/spf13/viper/pull/287
@@ -59,7 +58,7 @@ a client_id and client_secret to reauthenticate.
 			if err := p.save(token); err != nil {
 				fmt.Println("login Error saving config data: ", err)
 			}
-			fmt.Println("login OK. Token: ", model.CPPM().Token())
+			fmt.Println("login OK. Token: ", globalClearpass.Token())
 		}
 	},
 }
@@ -80,8 +79,7 @@ func (p loginCmdP) run() (string, error) {
 	}
 	token := viper.GetString("token")
 	if token != "" {
-		cppm := model.CPPM()
-		err := cppm.Validate(server, client, token)
+		err := globalClearpass.Validate(server, client, token)
 		if err == nil {
 			return token, nil
 		}
@@ -91,7 +89,7 @@ func (p loginCmdP) run() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return model.CPPM().Login(server, client, passwd)
+	return globalClearpass.Login(server, client, passwd)
 }
 
 // Save login parameters

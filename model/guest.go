@@ -2,19 +2,25 @@ package model
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/rafahpe/cpcli/lib"
 )
 
 // Guests enumerates all guests
-func (c *clearpass) Guests(ctx context.Context, pageSize int) (chan lib.Reply, error) {
-	return c.Follow(ctx, "guest", nil, pageSize)
-}
-
-// GuestByMac finds a guest information from its MAC address
-func (c *clearpass) GuestByMac(ctx context.Context, pageSize int, mac lib.MAC) (chan lib.Reply, error) {
-	params := map[string]string{
-		"mac": mac.Hyphen(),
+func (c *clearpass) Guests(ctx context.Context, filters map[Filter]string, pageSize int) (chan lib.Reply, error) {
+	var params map[string]string
+	if filters != nil && len(filters) > 0 {
+		params = make(map[string]string)
+		for key, val := range filters {
+			switch key {
+			case MAC:
+				// MAC format: upper, hyphenated
+				params["mac"] = lib.NewMAC(val).Hyphen()
+			default:
+				return nil, fmt.Errorf("Parameter %d = '%s' not supported", key, val)
+			}
+		}
 	}
-	return c.Follow(ctx, "guest", params, pageSize)
+	return c.follow(ctx, "guest", params, pageSize)
 }

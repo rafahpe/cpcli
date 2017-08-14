@@ -16,7 +16,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"log"
 
 	"github.com/rafahpe/cpcli/lib"
@@ -38,16 +37,14 @@ var epListCmd = &cobra.Command{
   - If some parameters are provided, they are considered attributes to dump,
     for instance "mac_address", "attributes.Username"`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := login(); err != nil {
-			fmt.Println("epList Error: ", err)
-			return
-		}
 		opt := getOptions(cmd, args)
 		err := lib.Paginate(opt.SkipHeaders, opt.Args, func(ctx context.Context, pageSize int) (chan lib.Reply, error) {
+			var filters map[model.Filter]string
 			if opt.Mac != "" {
-				return model.CPPM().EndpointByMac(ctx, opt.PageSize, opt.Mac)
+				filters = make(map[model.Filter]string)
+				filters[model.MAC] = opt.Mac
 			}
-			return model.CPPM().Endpoints(ctx, pageSize)
+			return globalClearpass.Endpoints(ctx, filters, pageSize)
 		})
 		if err != nil {
 			log.Print(err)

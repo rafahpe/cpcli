@@ -16,7 +16,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"log"
 
 	"github.com/rafahpe/cpcli/lib"
@@ -35,16 +34,14 @@ var guestListCmd = &cobra.Command{
   - If no parameters provided, list the whole guest user data as a JSON object.
   - If some parameters are provided, they are considered attributes to dump`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := login(); err != nil {
-			fmt.Println("guestList Error: ", err)
-			return
-		}
 		opt := getOptions(cmd, args)
 		err := lib.Paginate(opt.SkipHeaders, opt.Args, func(ctx context.Context, pageSize int) (chan lib.Reply, error) {
+			var filters map[model.Filter]string
 			if opt.Mac != "" {
-				return model.CPPM().GuestByMac(ctx, opt.PageSize, opt.Mac)
+				filters = make(map[model.Filter]string)
+				filters[model.MAC] = opt.Mac
 			}
-			return model.CPPM().Guests(ctx, pageSize)
+			return globalClearpass.Guests(ctx, filters, pageSize)
 		})
 		if err != nil {
 			log.Print(err)

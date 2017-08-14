@@ -87,7 +87,7 @@ func (w *wrappedReply) flush(output chan lib.Reply) {
 }
 
 // Post Request can be a struct, reply must be pointer to struct
-func Post(ctx context.Context, url, token string, request, reply interface{}) error {
+func post(ctx context.Context, url, token string, request, reply interface{}) error {
 	jsonBody, err := json.Marshal(request)
 	if err != nil {
 		return err
@@ -101,7 +101,7 @@ func Post(ctx context.Context, url, token string, request, reply interface{}) er
 }
 
 // Get Request can be an struct, reply must be pointer to struct
-func Get(ctx context.Context, url, token string, request map[string]string, reply interface{}) error {
+func get(ctx context.Context, url, token string, request map[string]string, reply interface{}) error {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return err
@@ -117,14 +117,14 @@ func Get(ctx context.Context, url, token string, request map[string]string, repl
 }
 
 // Follow a paginated stream
-func Follow(ctx context.Context, url, token string, request map[string]string) chan lib.Reply {
+func follow(ctx context.Context, url, token string, request map[string]string) chan lib.Reply {
 	result := make(chan lib.Reply)
 	go func(result chan lib.Reply) {
 		defer close(result)
 		logger := log.New(os.Stderr, "", 0)
 		// First page, get as is
 		reply := wrappedReply{}
-		if err := Get(ctx, url, token, request, &reply); err != nil {
+		if err := get(ctx, url, token, request, &reply); err != nil {
 			logger.Print(err)
 			return
 		}
