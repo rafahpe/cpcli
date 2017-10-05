@@ -16,6 +16,8 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 
 	"github.com/spf13/cobra"
@@ -45,8 +47,21 @@ var getCmd = &cobra.Command{
 			log.Print(err)
 			return
 		}
-		if err := paginate(feed, opt.SkipHeaders, args); err != nil {
-			log.Print(err)
+		// If pretty printing, output is console.
+		if globalOptions.PrettyPrint {
+			if err := paginate(feed, opt.SkipHeaders, args); err != nil {
+				log.Print(err)
+			}
+			return
+		}
+		// Otherwise, output may be pipe. Use newline-delimited json.
+		for reply := range feed {
+			txt, err := json.Marshal(reply)
+			if err != nil {
+				log.Print(err)
+			} else {
+				fmt.Println(string(txt))
+			}
 		}
 	},
 }

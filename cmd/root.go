@@ -66,6 +66,7 @@ type options struct {
 	PageSize    int
 	Mac         string
 	SkipHeaders bool
+	PrettyPrint bool
 	Args        []string
 }
 
@@ -86,11 +87,12 @@ func init() {
 	RootCmd.PersistentFlags().StringP("client", "c", "", "Client ID for accesing the CPPM API")
 	RootCmd.PersistentFlags().StringP("token", "t", "", "OAUTH token")
 	RootCmd.PersistentFlags().BoolP("unsafe", "u", false, "Skip server certificate verification")
-	RootCmd.PersistentFlags().IntP("pagesize", "p", DefaultPageSize, "Pagesize of the requests")
+	RootCmd.PersistentFlags().IntP("pagesize", "P", DefaultPageSize, "Pagesize of the requests")
 
 	// Flags that are shared by several commands.
 	RootCmd.PersistentFlags().StringVarP(&(globalOptions.Mac), "mac", "m", "", "MAC address to filter by, if supported")
 	RootCmd.PersistentFlags().BoolVarP(&(globalOptions.SkipHeaders), "skip-headers", "H", false, "Skip headers when dumping CSV")
+	RootCmd.PersistentFlags().BoolVarP(&(globalOptions.PrettyPrint), "prettyprint", "p", false, "Pretty print json output")
 
 	viper.BindPFlag("server", RootCmd.PersistentFlags().Lookup("server"))
 	viper.BindPFlag("client", RootCmd.PersistentFlags().Lookup("client"))
