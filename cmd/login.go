@@ -15,9 +15,10 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 
-	"github.com/rafahpe/cpcli/lib"
+	"github.com/peterh/liner"
 	"github.com/spf13/cobra"
 	// Using this forst instead of the original because of write file support
 	// See: https://github.com/spf13/viper/pull/287
@@ -78,18 +79,19 @@ func (p loginCmdP) run() (string, error) {
 		return "", ErrMissingCreds
 	}
 	token := viper.GetString("token")
+	ctx := context.Background()
 	if token != "" {
-		err := globalClearpass.Validate(server, client, token)
+		err := globalClearpass.Validate(ctx, server, client, token)
 		if err == nil {
 			return token, nil
 		}
 		fmt.Println("login.run Error: ", err)
 	}
-	passwd, err := lib.Readline(fmt.Sprintf("Secret for '%s': ", client), true)
+	passwd, err := readline(fmt.Sprintf("Secret for '%s': ", client), true)
 	if err != nil {
 		return "", err
 	}
-	return globalClearpass.Login(server, client, passwd)
+	return globalClearpass.Login(ctx, server, client, passwd)
 }
 
 // Save login parameters
@@ -98,4 +100,15 @@ func (p loginCmdP) save(token string) error {
 		viper.Set("token", token)
 	}
 	return viper.WriteConfig()
+}
+
+// Readline reads a single line of input
+func readline(prompt string, password bool) (string, error) {
+	line := liner.NewLiner()
+	defer line.Close()
+	line.SetCtrlCAborts(true)
+	if !password {
+		return line.Prompt(prompt)
+	}
+	return line.PasswordPrompt(prompt)
 }

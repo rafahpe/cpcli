@@ -15,19 +15,22 @@
 package cmd
 
 import (
+	"fmt"
+	"time"
+
 	"github.com/spf13/cobra"
 )
 
-// loginCmd represents the login command
-var guestCmd = &cobra.Command{
-	Use:   "guest",
-	Short: "Actions on guest users",
-	Long:  "Actions on guest users",
+// unixtimeCmd represents the unixtime command
+var unixtimeCmd = &cobra.Command{
+	Use:   "unixtime",
+	Short: "Get the current time as unix timestamp",
+	Long:  "Get the current time as unix timestamp",
 	Run: func(cmd *cobra.Command, args []string) {
-		cmd.Help()
+		fmt.Print(int32(time.Now().Unix()))
 	},
 }
 
 func init() {
-	RootCmd.AddCommand(guestCmd)
+	RootCmd.AddCommand(unixtimeCmd)
 }

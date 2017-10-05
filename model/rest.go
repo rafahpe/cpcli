@@ -6,11 +6,10 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
-
-	"github.com/rafahpe/cpcli/lib"
 
 	"golang.org/x/net/context/ctxhttp"
 )
@@ -18,15 +17,31 @@ import (
 // Error type
 type Error string
 
+// Error implements Error interface
 func (e Error) Error() string {
 	return string(e)
 }
 
 // ErrNotLoggedIn returned when the user is not logged into CPPM yet
-const ErrNotLoggedIn = Error("You must log into Clearpass to start")
+const ErrNotLoggedIn = Error("Not authorized. Make sure you log in and your account has the proper privileges")
 
-// ErrPageTooSmall when paginated commands are givel a too small page size
+// ErrPageTooSmall when paginated commands are givel a page size too small (<=0)
 const ErrPageTooSmall = Error("Page size is too small")
+
+type method string
+
+// HTTP methods supported
+const (
+	GET    method = "GET"
+	POST   method = "POST"
+	PUT    method = "PUT"
+	UPDATE method = "UPDATE"
+	DELETE method = "DELETE"
+	PATCH  method = "PATCH"
+)
+
+// Reply generic version
+type Reply map[string]json.RawMessage
 
 // HalLink is a link inside a struct
 type halLink struct {
@@ -44,7 +59,7 @@ type halLinks struct {
 
 // WrappedItems wraps an array of items
 type wrappedItems struct {
-	Items []lib.Reply `json:"items"`
+	Items []Reply `json:"items"`
 }
 
 // WrappedReply returned by endpoints that provide multiples values
@@ -53,18 +68,46 @@ type wrappedReply struct {
 	Links    halLinks     `json:"_links"`
 }
 
-// Generic function to perform a REST request
-func rest(ctx context.Context, token string, request *http.Request, reply interface{}) error {
-	if token != "" {
-		request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+// Exhaust a channel so its goroutine can end
+func Exhaust(replies chan Reply) {
+	for _ = range replies {
 	}
-	request.Header.Set("Accept", "application/json")
+}
+
+// Generic function to perform a REST request
+func rest(ctx context.Context, method method, url, token string, query map[string]string, request, reply interface{}, skipVerify bool) error {
+	var body io.Reader
+	if request != nil {
+		jsonBody, err := json.Marshal(request)
+		if err != nil {
+			return err
+		}
+		body = bytes.NewReader(jsonBody)
+	}
+	req, err := http.NewRequest(string(method), url, body)
+	if err != nil {
+		return err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if query != nil && len(query) > 0 {
+		q := req.URL.Query()
+		for key, val := range query {
+			q.Add(key, val)
+		}
+		req.URL.RawQuery = q.Encode()
+	}
+	if token != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+	}
+	req.Header.Set("Accept", "application/json")
 	client := &http.Client{
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: skipVerify},
 		},
 	}
-	resp, err := ctxhttp.Do(ctx, client, request)
+	resp, err := ctxhttp.Do(ctx, client, req)
 	if resp != nil {
 		defer resp.Body.Close()
 	}
@@ -80,75 +123,67 @@ func rest(ctx context.Context, token string, request *http.Request, reply interf
 	return json.NewDecoder(resp.Body).Decode(reply)
 }
 
-func (w *wrappedReply) flush(output chan lib.Reply) {
+// Flush all replies to the channel
+func (w wrappedReply) flush(output chan Reply) {
 	for _, item := range w.Embedded.Items {
 		output <- item
 	}
 }
 
-// Post Request can be a struct, reply must be pointer to struct
-func post(ctx context.Context, url, token string, request, reply interface{}) error {
-	jsonBody, err := json.Marshal(request)
-	if err != nil {
-		return err
-	}
-	req, err := http.NewRequest("POST", url, bytes.NewReader(jsonBody))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	return rest(ctx, token, req, reply)
-}
-
-// Get Request can be an struct, reply must be pointer to struct
-func get(ctx context.Context, url, token string, request map[string]string, reply interface{}) error {
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return err
-	}
-	if request != nil && len(request) > 0 {
-		q := req.URL.Query()
-		for key, val := range request {
-			q.Add(key, val)
-		}
-		req.URL.RawQuery = q.Encode()
-	}
-	return rest(ctx, token, req, reply)
-}
-
 // Follow a paginated stream
-func follow(ctx context.Context, url, token string, request map[string]string) chan lib.Reply {
-	result := make(chan lib.Reply)
-	go func(result chan lib.Reply) {
+func follow(ctx context.Context, method method, url, token string, query map[string]string, request interface{}, skipVerify bool) (chan Reply, error) {
+	result := make(chan Reply)
+	errors := make(chan error)
+	go func(result chan Reply, errors chan error) {
 		defer close(result)
 		logger := log.New(os.Stderr, "", 0)
-		// First page, get as is
-		reply := wrappedReply{}
-		if err := get(ctx, url, token, request, &reply); err != nil {
-			logger.Print(err)
+		reply := Reply{}
+		if err := rest(ctx, method, url, token, query, request, &reply, skipVerify); err != nil {
+			errors <- err
 			return
 		}
-		reply.flush(result)
-		// Following pages, get from HAL
+		// If it is not a list of embedded replies, but just a single
+		// item, return it.
+		rawEmbedded, ok := reply["_embedded"]
+		if !ok {
+			errors <- nil
+			result <- reply
+			return
+		}
+		// If embedded, flush the first batch of results
+		wReply := wrappedReply{}
+		if err := json.Unmarshal(rawEmbedded, &wReply.Embedded); err != nil {
+			errors <- err
+			return
+		}
+		rawLinks, ok := reply["_links"]
+		if ok {
+			if err := json.Unmarshal(rawLinks, &wReply.Links); err != nil {
+				errors <- err
+				return
+			}
+		}
+		// Release the caller function, continue in background
+		close(errors)
+		wReply.flush(result)
 		for {
 			// Run new request from link provided by HAL
-			url := reply.Links.Next.Href
+			url := wReply.Links.Next.Href
 			if url == "" {
 				return
 			}
-			req, err := http.NewRequest("GET", url, nil)
-			if err != nil {
+			if err := rest(ctx, GET, url, token, nil, nil, &wReply, skipVerify); err != nil {
+				// Error channel is already closed. Just log the problem.
 				logger.Print(err)
 				return
 			}
-			// Get new reply
-			reply = wrappedReply{}
-			if err := rest(ctx, token, req, &reply); err != nil {
-				logger.Print(err)
-				return
-			}
-			reply.flush(result)
+			wReply.flush(result)
 		}
-	}(result)
-	return result
+	}(result, errors)
+	err := <-errors
+	if err != nil {
+		go Exhaust(result)
+		return nil, err
+	}
+	return result, nil
 }

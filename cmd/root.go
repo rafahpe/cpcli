@@ -23,7 +23,7 @@ import (
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/rafahpe/cpcli/model"
 	"github.com/spf13/cobra"
-	// Using this forst instead of the original because of write file support
+	// Using this fork instead of the original because of write file support
 	// See: https://github.com/spf13/viper/pull/287
 	"github.com/theherk/viper"
 )
@@ -47,9 +47,7 @@ var RootCmd = &cobra.Command{
 It performs:
 
   - Authentication against Clearpass with the "login" command.
-  - Exploration of the guest database with the "guest" command.
-  - Exploration of the endpoints database with the "ep" command.
-  - More things to come...`,
+  - GET, POST, PUT, PATCH, DELETE requests to the API.`,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	//	Run: func(cmd *cobra.Command, args []string) { },
@@ -87,7 +85,8 @@ func init() {
 	RootCmd.PersistentFlags().StringP("server", "s", "", "CPPM Server name or IP address")
 	RootCmd.PersistentFlags().StringP("client", "c", "", "Client ID for accesing the CPPM API")
 	RootCmd.PersistentFlags().StringP("token", "t", "", "OAUTH token")
-	RootCmd.PersistentFlags().IntP("pagesize", "p", 10, "Pagesize of the requests")
+	RootCmd.PersistentFlags().BoolP("unsafe", "u", false, "Skip server certificate verification")
+	RootCmd.PersistentFlags().IntP("pagesize", "p", DefaultPageSize, "Pagesize of the requests")
 
 	// Flags that are shared by several commands.
 	RootCmd.PersistentFlags().StringVarP(&(globalOptions.Mac), "mac", "m", "", "MAC address to filter by, if supported")
@@ -96,6 +95,7 @@ func init() {
 	viper.BindPFlag("server", RootCmd.PersistentFlags().Lookup("server"))
 	viper.BindPFlag("client", RootCmd.PersistentFlags().Lookup("client"))
 	viper.BindPFlag("token", RootCmd.PersistentFlags().Lookup("token"))
+	viper.BindPFlag("unsafe", RootCmd.PersistentFlags().Lookup("unsafe"))
 	viper.BindPFlag("pagesize", RootCmd.PersistentFlags().Lookup("pagesize"))
 }
 
@@ -135,7 +135,8 @@ func initConfig() {
 	// Init the connection to clearpass
 	server := viper.GetString("server")
 	token := viper.GetString("token")
-	globalClearpass = model.NewClearpass(server, token)
+	unsafe := viper.GetBool("unsafe")
+	globalClearpass = model.New(server, token, unsafe)
 }
 
 func primeConfigFile(cfgFile string) {

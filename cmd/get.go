@@ -18,40 +18,39 @@ import (
 	"context"
 	"log"
 
-	"github.com/rafahpe/cpcli/lib"
-	"github.com/rafahpe/cpcli/model"
 	"github.com/spf13/cobra"
-	// Using this forst instead of the original because of write file support
-	// See: https://github.com/spf13/viper/pull/287
 )
 
-type epListCmdP struct{ *cobra.Command }
-
 // loginCmd represents the login command
-var epListCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List endpoints from CPPM",
-	Long: `List all the endpoints of CPPM, allows pagination
+var getCmd = &cobra.Command{
+	Use:   "get",
+	Short: "Make a GET request",
+	Long: `Make a GET request, allows pagination.
 
   - If no parameters provided, list the whole endpoint data as a JSON object.
   - If some parameters are provided, they are considered attributes to dump,
     for instance "mac_address", "attributes.Username"`,
 	Run: func(cmd *cobra.Command, args []string) {
+		pageSize, _ := getPageSize()
 		opt := getOptions(cmd, args)
-		err := lib.Paginate(opt.SkipHeaders, opt.Args, func(ctx context.Context, pageSize int) (chan lib.Reply, error) {
-			var filters map[model.Filter]string
-			if opt.Mac != "" {
-				filters = make(map[model.Filter]string)
-				filters[model.MAC] = opt.Mac
-			}
-			return globalClearpass.Endpoints(ctx, filters, pageSize)
-		})
+		if len(opt.Args) < 1 {
+			log.Print("Error: debe indicar un path para hacer el GET")
+			return
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		path, args := opt.Args[0], opt.Args[1:len(opt.Args)]
+		feed, err := globalClearpass.Get(ctx, path, nil, pageSize)
 		if err != nil {
+			log.Print(err)
+			return
+		}
+		if err := paginate(feed, opt.SkipHeaders, args); err != nil {
 			log.Print(err)
 		}
 	},
 }
 
 func init() {
-	epCmd.AddCommand(epListCmd)
+	RootCmd.AddCommand(getCmd)
 }

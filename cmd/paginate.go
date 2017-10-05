@@ -1,65 +1,36 @@
-package lib
+package cmd
 
 import (
 	"bufio"
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 	"strings"
 
-	"github.com/peterh/liner"
+	"github.com/rafahpe/cpcli/model"
 	"github.com/theherk/viper"
 )
 
-// Readline reads a single line of input
-func Readline(prompt string, password bool) (string, error) {
-	line := liner.NewLiner()
-	defer line.Close()
-	line.SetCtrlCAborts(true)
-	if !password {
-		return line.Prompt(prompt)
+// DefaultPageSize is the default page size for pagination
+const DefaultPageSize = 24
+
+// get page size
+func getPageSize() (int, bool) {
+	pageSize := viper.GetInt("pagesize")
+	if pageSize <= 0 {
+		return DefaultPageSize, false
 	}
-	return line.PasswordPrompt(prompt)
+	return pageSize, true
 }
-
-// Reply generic version
-type Reply map[string]json.RawMessage
-
-// Exhaust a channel so its goroutine can end
-func Exhaust(replies chan Reply) {
-	for _ = range replies {
-	}
-}
-
-// FeedFunc gets a feed of replies
-type FeedFunc func(ctx context.Context, pageSize int) (chan Reply, error)
 
 // Paginate the feed of replies, filtering by args
-func Paginate(skipHeaders bool, args []string, feeder FeedFunc) error {
-	pageSize := viper.GetInt("pagesize")
-	doPagination := true
-	if pageSize <= 0 {
-		doPagination = false
-		pageSize = 24
-	}
-	// Get the input channel
-	ctx, cancel := context.WithCancel(context.Background())
-	pages, err := feeder(ctx, pageSize)
-	if err != nil {
-		cancel()
-		return err
-	}
-	// Cancel and exhaust the channel on exit
-	defer func(cancel context.CancelFunc, pages chan Reply) {
-		cancel()
-		Exhaust(pages)
-	}(cancel, pages)
+func paginate(pages chan model.Reply, skipHeaders bool, format []string) error {
+	defer model.Exhaust(pages)
 	// If output is CSV-like, dump the header
-	if args != nil && len(args) > 0 && !skipHeaders {
+	if format != nil && len(format) > 0 && !skipHeaders {
 		sep := ""
-		for _, name := range args {
+		for _, name := range format {
 			fmt.Print(sep, name)
 			sep = ";"
 		}
@@ -68,10 +39,11 @@ func Paginate(skipHeaders bool, args []string, feeder FeedFunc) error {
 	// Keep reading pages of data
 	reader := bufio.NewReader(os.Stdin)
 	lineno := 0
+	pageSize, doPagination := getPageSize()
 	for page := range pages {
-		if args != nil && len(args) > 0 {
+		if format != nil && len(format) > 0 {
 			sep := ""
-			for _, name := range args {
+			for _, name := range format {
 				fmt.Print(sep, pick(page, name))
 				sep = ";"
 			}
@@ -102,7 +74,7 @@ func Paginate(skipHeaders bool, args []string, feeder FeedFunc) error {
 }
 
 // Pick particular attributes form a Reply object
-func pick(data Reply, attrib string) string {
+func pick(data model.Reply, attrib string) string {
 	parts := strings.Split(attrib, ".")
 	lenp := len(parts)
 	// If the string is a dot-separated path, go deep
@@ -111,7 +83,7 @@ func pick(data Reply, attrib string) string {
 		if !ok {
 			return ""
 		}
-		data = make(Reply)
+		data = make(model.Reply)
 		if err := json.Unmarshal(newData, &data); err != nil {
 			return ""
 		}
