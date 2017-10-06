@@ -28,16 +28,17 @@ const ErrNotLoggedIn = Error("Not authorized. Make sure you log in and your acco
 // ErrPageTooSmall when paginated commands are givel a page size too small (<=0)
 const ErrPageTooSmall = Error("Page size is too small")
 
-type method string
+// Method is the HTTP method for the request
+type Method string
 
 // HTTP methods supported
 const (
-	GET    method = "GET"
-	POST   method = "POST"
-	PUT    method = "PUT"
-	UPDATE method = "UPDATE"
-	DELETE method = "DELETE"
-	PATCH  method = "PATCH"
+	GET    Method = "GET"
+	POST   Method = "POST"
+	PUT    Method = "PUT"
+	UPDATE Method = "UPDATE"
+	DELETE Method = "DELETE"
+	PATCH  Method = "PATCH"
 )
 
 // Reply generic version
@@ -75,7 +76,7 @@ func Exhaust(replies chan Reply) {
 }
 
 // Generic function to perform a REST request
-func rest(ctx context.Context, method method, url, token string, query map[string]string, request, reply interface{}, skipVerify bool) error {
+func rest(ctx context.Context, method Method, url, token string, query map[string]string, request, reply interface{}, skipVerify bool) error {
 	var body io.Reader
 	if request != nil {
 		jsonBody, err := json.Marshal(request)
@@ -131,7 +132,7 @@ func (w wrappedReply) flush(output chan Reply) {
 }
 
 // Follow a paginated stream
-func follow(ctx context.Context, method method, url, token string, query map[string]string, request interface{}, skipVerify bool) (chan Reply, error) {
+func follow(ctx context.Context, method Method, url, token string, query map[string]string, request interface{}, skipVerify bool) (chan Reply, error) {
 	result := make(chan Reply)
 	errors := make(chan error)
 	go func(result chan Reply, errors chan error) {

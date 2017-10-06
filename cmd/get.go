@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/rafahpe/cpcli/model"
 	"github.com/spf13/cobra"
 )
 
@@ -42,7 +43,7 @@ var getCmd = &cobra.Command{
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		path, args := opt.Args[0], opt.Args[1:len(opt.Args)]
-		feed, err := globalClearpass.Get(ctx, path, nil, pageSize)
+		feed, err := globalClearpass.Do(ctx, model.GET, path, nil, nil, pageSize)
 		if err != nil {
 			log.Print(err)
 			return

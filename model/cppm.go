@@ -15,8 +15,8 @@ type Clearpass interface {
 	Validate(ctx context.Context, ip, clientID, token string) error
 	// Token obtained after authentication / validation
 	Token() string
-	// Perform a Get request.
-	Get(ctx context.Context, path string, filter map[string]string, pageSize int) (chan Reply, error)
+	// Do a REST request to the CPPM.
+	Do(ctx context.Context, method Method, path string, filter map[string]string, request interface{}, pageSize int) (chan Reply, error)
 }
 
 // Clearpass model
@@ -42,7 +42,7 @@ func (c *clearpass) Token() string {
 
 // Follow a stream of results from an endpoint.
 // Filter is a map of fields to filter by (e.g. "mac": "00:01:02:03:04:05")
-func (c *clearpass) follow(ctx context.Context, method method, path string, filter map[string]string, request interface{}, pageSize int) (chan Reply, error) {
+func (c *clearpass) Do(ctx context.Context, method Method, path string, filter map[string]string, request interface{}, pageSize int) (chan Reply, error) {
 	if c.url == "" || c.token == "" {
 		return nil, ErrNotLoggedIn
 	}
@@ -50,7 +50,7 @@ func (c *clearpass) follow(ctx context.Context, method method, path string, filt
 		return nil, ErrPageTooSmall
 	}
 	defaults := map[string]string{
-		"filter":          "",
+		"filter":          "{}",
 		"sort":            "-id",
 		"offset":          "0",
 		"limit":           fmt.Sprintf("%d", pageSize),
@@ -68,9 +68,4 @@ func (c *clearpass) follow(ctx context.Context, method method, path string, filt
 		defaults["filter"] = string(val)
 	}
 	return follow(ctx, method, c.url+path, c.token, defaults, request, c.unsafe)
-}
-
-// Run a GET request against CPPM
-func (c *clearpass) Get(ctx context.Context, path string, filter map[string]string, pageSize int) (chan Reply, error) {
-	return c.follow(ctx, GET, path, filter, nil, pageSize)
 }
