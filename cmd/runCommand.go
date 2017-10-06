@@ -26,7 +26,7 @@ func runCmd(cmd *cobra.Command, args []string, method model.Method) {
 		for _, f := range opt.Filter {
 			parts := strings.SplitN(f, "=", 2)
 			if len(parts) < 2 {
-				log.Print("Error: only simple equality filters supported righ now")
+				filter[f] = "{\"$exists\":true}"
 			} else {
 				filter[parts[0]] = parts[1]
 			}

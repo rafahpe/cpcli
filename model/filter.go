@@ -1,6 +1,9 @@
 package model
 
-import "strings"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // Normalizer function that can "normalize" some parameters
 // that depend on the query. E.g. MACs for endpoints have a
@@ -32,21 +35,33 @@ var normalizerTable = map[string]normap{
 }
 
 // Normalize some known parameters that change format, such as MAC addresses.
-func normalize(f map[string]string, path string) (map[string]string, error) {
+func normalize(f map[string]string, path string) (map[string]interface{}, error) {
 	parts := strings.SplitN(path, "/", 2)
 	if len(parts) > 1 {
 		path = parts[0]
 	}
-	if normap, ok := normalizerTable[path]; ok {
-		for k, v := range f {
-			if normalizer, ok := normap[k]; ok {
-				newVal, err := normalizer(v)
-				if err != nil {
-					return nil, err
-				}
-				f[k] = newVal
+	normap, mustNorm := normalizerTable[path]
+	result := make(map[string]interface{}, len(f))
+	for k, v := range f {
+		var newVal interface{}
+		// If value looks like json, parse it.
+		if v[0] == '{' || v[0] == '[' || v[0] == '\'' || v[0] == '"' {
+			if err := json.Unmarshal(([]byte)(v), &newVal); err != nil {
+				newVal = v
 			}
+		} else {
+			if mustNorm {
+				if normalizer, ok := normap[k]; ok {
+					norm, err := normalizer(v)
+					if err != nil {
+						return nil, err
+					}
+					v = norm
+				}
+			}
+			newVal = v
 		}
+		result[k] = newVal
 	}
-	return f, nil
+	return result, nil
 }

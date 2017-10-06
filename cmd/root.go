@@ -96,7 +96,7 @@ func init() {
 
 	// Flags that are shared by several commands.
 	RootCmd.PersistentFlags().BoolVarP(&(globalOptions.SkipHeaders), "skip-headers", "H", false, "Skip headers when dumping CSV")
-	RootCmd.PersistentFlags().StringArrayVarP(&(globalOptions.Filter), "filter", "f", nil, "Filter arguments")
+	RootCmd.PersistentFlags().StringArrayVarP(&(globalOptions.Filter), "filter", "f", nil, "Filter arguments (e.g. mac=00:86:df:11:22:33)")
 	RootCmd.PersistentFlags().BoolVarP(&(globalOptions.PrettyPrint), "prettyprint", "p", false, "Pretty print json output")
 
 	viper.BindPFlag("server", RootCmd.PersistentFlags().Lookup("server"))
