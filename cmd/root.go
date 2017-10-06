@@ -62,11 +62,16 @@ func Execute() {
 	}
 }
 
+// DefaultPageSize is the default page size for pagination
+const DefaultPageSize = 24
+
 type options struct {
 	PageSize    int
+	Paginate    bool
 	Mac         string
 	SkipHeaders bool
 	PrettyPrint bool
+	Filter      []string
 	Args        []string
 }
 
@@ -90,8 +95,8 @@ func init() {
 	RootCmd.PersistentFlags().IntP("pagesize", "P", DefaultPageSize, "Pagesize of the requests")
 
 	// Flags that are shared by several commands.
-	RootCmd.PersistentFlags().StringVarP(&(globalOptions.Mac), "mac", "m", "", "MAC address to filter by, if supported")
 	RootCmd.PersistentFlags().BoolVarP(&(globalOptions.SkipHeaders), "skip-headers", "H", false, "Skip headers when dumping CSV")
+	RootCmd.PersistentFlags().StringArrayVarP(&(globalOptions.Filter), "filter", "f", nil, "Filter arguments")
 	RootCmd.PersistentFlags().BoolVarP(&(globalOptions.PrettyPrint), "prettyprint", "p", false, "Pretty print json output")
 
 	viper.BindPFlag("server", RootCmd.PersistentFlags().Lookup("server"))
@@ -152,9 +157,15 @@ func primeConfigFile(cfgFile string) {
 }
 
 // Simplifies getting common options
-func getOptions(cmd *cobra.Command, args []string) options {
-	result := globalOptions
-	result.PageSize = viper.GetInt("pagesize")
-	result.Args = args
-	return result
+func updateOptions(cmd *cobra.Command, args []string) options {
+	pageSize := viper.GetInt("pagesize")
+	if pageSize <= 0 {
+		globalOptions.PageSize = DefaultPageSize
+		globalOptions.Paginate = false
+	} else {
+		globalOptions.PageSize = pageSize
+		globalOptions.Paginate = true
+	}
+	globalOptions.Args = args
+	return globalOptions
 }

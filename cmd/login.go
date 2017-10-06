@@ -54,7 +54,7 @@ a client_id and client_secret to reauthenticate.
 	Run: func(cmd *cobra.Command, args []string) {
 		p := loginCmdP{cmd}
 		if token, err := p.run(); err != nil {
-			fmt.Println("login Error: ", err)
+			fmt.Println("No previous token or no longer valid. Error: ", err)
 		} else {
 			if err := p.save(token); err != nil {
 				fmt.Println("login Error saving config data: ", err)

@@ -34,11 +34,11 @@ type Method string
 // HTTP methods supported
 const (
 	GET    Method = "GET"
-	POST   Method = "POST"
-	PUT    Method = "PUT"
-	UPDATE Method = "UPDATE"
-	DELETE Method = "DELETE"
-	PATCH  Method = "PATCH"
+	POST          = "POST"
+	PUT           = "PUT"
+	UPDATE        = "UPDATE"
+	DELETE        = "DELETE"
+	PATCH         = "PATCH"
 )
 
 // Reply generic version

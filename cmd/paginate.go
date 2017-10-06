@@ -9,25 +9,13 @@ import (
 	"strings"
 
 	"github.com/rafahpe/cpcli/model"
-	"github.com/theherk/viper"
 )
 
-// DefaultPageSize is the default page size for pagination
-const DefaultPageSize = 24
-
-// get page size
-func getPageSize() (int, bool) {
-	pageSize := viper.GetInt("pagesize")
-	if pageSize <= 0 {
-		return DefaultPageSize, false
-	}
-	return pageSize, true
-}
-
 // Paginate the feed of replies, filtering by args
-func paginate(pages chan model.Reply, skipHeaders bool, format []string) error {
+func paginate(pages chan model.Reply, format []string) error {
 	defer model.Exhaust(pages)
 	// If output is CSV-like, dump the header
+	skipHeaders := globalOptions.SkipHeaders
 	if format != nil && len(format) > 0 && !skipHeaders {
 		sep := ""
 		for _, name := range format {
@@ -39,7 +27,6 @@ func paginate(pages chan model.Reply, skipHeaders bool, format []string) error {
 	// Keep reading pages of data
 	reader := bufio.NewReader(os.Stdin)
 	lineno := 0
-	pageSize, doPagination := getPageSize()
 	for page := range pages {
 		if format != nil && len(format) > 0 {
 			sep := ""
@@ -55,9 +42,9 @@ func paginate(pages chan model.Reply, skipHeaders bool, format []string) error {
 			}
 			fmt.Println(string(output))
 		}
-		if doPagination {
+		if globalOptions.Paginate {
 			lineno++
-			if lineno >= pageSize {
+			if lineno >= globalOptions.PageSize {
 				log.Println("Press q to quit, enter to continue")
 				r, _, err := reader.ReadRune()
 				if err != nil {
