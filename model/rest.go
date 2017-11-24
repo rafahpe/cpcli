@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"golang.org/x/net/context/ctxhttp"
 )
@@ -31,6 +32,34 @@ const ErrPageTooSmall = Error("Page size is too small")
 
 // Method is the HTTP method for the request
 type Method string
+
+// RestError encodes info about REST errors
+type RestError struct {
+	Err        error
+	Method     string
+	URL        string
+	Query      string
+	Unsafe     bool
+	Header     http.Header
+	Body       string
+	StatusCode int
+	Reply      string
+}
+
+// Error implements Error interface
+func (e RestError) Error() string {
+	return strings.Join([]string{
+		e.Err.Error(),
+		fmt.Sprint("Method: ", e.Method),
+		fmt.Sprint("URL: ", e.URL),
+		fmt.Sprint("Query: ", e.Query),
+		fmt.Sprint("Unsafe: ", e.Unsafe),
+		fmt.Sprint("Header: ", e.Header),
+		fmt.Sprint("Body: ", e.Body),
+		fmt.Sprint("StatusCode: ", e.StatusCode),
+		fmt.Sprint("Reply: ", e.Reply),
+	}, "\n  ")
+}
 
 // HTTP methods supported
 const (
@@ -78,6 +107,7 @@ func Exhaust(replies chan Reply) {
 
 // Generic function to perform a REST request
 func rest(ctx context.Context, method Method, url, token string, query map[string]string, request, reply interface{}, skipVerify bool) error {
+	details := RestError{Method: string(method), URL: url}
 	var body io.Reader
 	if request != nil {
 		jsonBody, err := json.Marshal(request)
@@ -85,6 +115,7 @@ func rest(ctx context.Context, method Method, url, token string, query map[strin
 			return err
 		}
 		body = bytes.NewReader(jsonBody)
+		details.Body = string(jsonBody)
 	}
 	req, err := http.NewRequest(string(method), url, body)
 	if err != nil {
@@ -99,11 +130,14 @@ func rest(ctx context.Context, method Method, url, token string, query map[strin
 			q.Add(key, val)
 		}
 		req.URL.RawQuery = q.Encode()
+		details.Query = req.URL.RawQuery
 	}
 	if token != "" {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	}
 	req.Header.Set("Accept", "application/json")
+	details.Header = req.Header
+	details.Unsafe = skipVerify
 	client := &http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: skipVerify},
@@ -114,20 +148,29 @@ func rest(ctx context.Context, method Method, url, token string, query map[strin
 		defer resp.Body.Close()
 	}
 	if err != nil {
-		return err
-	}
-	if resp.StatusCode == 401 || resp.StatusCode == 403 {
-		return ErrNotLoggedIn
-	}
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("Error: REST Status %s", resp.Status)
+		details.Err = err
+		return details
 	}
 	respBody, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return err
+		details.Err = err
+		return details
 	}
-	/*log.Print("HACK: Response body = ", string(respBody))*/
-	return json.Unmarshal(respBody, reply)
+	details.StatusCode = resp.StatusCode
+	details.Reply = string(respBody)
+	if resp.StatusCode == 401 || resp.StatusCode == 403 {
+		details.Err = ErrNotLoggedIn
+		return details
+	}
+	if resp.StatusCode != 200 {
+		details.Err = fmt.Errorf("Error: REST Status %s", resp.Status)
+		return details
+	}
+	if err := json.Unmarshal(respBody, reply); err != nil {
+		details.Err = err
+		return details
+	}
+	return nil
 }
 
 // Flush all replies to the channel

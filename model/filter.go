@@ -1,7 +1,6 @@
 package model
 
 import (
-	"encoding/json"
 	"strings"
 )
 
@@ -34,35 +33,31 @@ var normalizerTable = map[string]normap{
 	},
 }
 
+// Filter to apply to GET queries
+type Filter = map[string]interface{}
+
 // Normalize some known parameters that have different formats
 // for different endpoints, such as MAC addresses.
-func normalize(f map[string]string, path string) (map[string]interface{}, error) {
+func normalize(f Filter, path string) (Filter, error) {
 	parts := strings.SplitN(path, "/", 2)
 	if len(parts) > 1 {
 		path = parts[0]
 	}
 	normap, mustNorm := normalizerTable[path]
-	result := make(map[string]interface{}, len(f))
-	for k, v := range f {
-		var newVal interface{}
-		// If value looks like json, parse it.
-		if v[0] == '{' || v[0] == '[' || v[0] == '\'' || v[0] == '"' {
-			if err := json.Unmarshal(([]byte)(v), &newVal); err != nil {
-				newVal = v
-			}
-		} else {
+	result := make(Filter, len(f))
+	for key, val := range f {
+		if text, ok := val.(string); ok {
 			if mustNorm {
-				if normalizer, ok := normap[k]; ok {
-					norm, err := normalizer(v)
+				if normalizer, ok := normap[key]; ok {
+					norm, err := normalizer(text)
 					if err != nil {
 						return nil, err
 					}
-					v = norm
+					val = norm
 				}
 			}
-			newVal = v
 		}
-		result[k] = newVal
+		result[key] = val
 	}
 	return result, nil
 }

@@ -71,6 +71,7 @@ type options struct {
 	Mac         string
 	SkipHeaders bool
 	PrettyPrint bool
+	Force       bool
 	Filter      []string
 	Args        []string
 }
@@ -100,6 +101,7 @@ func init() {
 	RootCmd.PersistentFlags().BoolVarP(&(globalOptions.SkipHeaders), "skip-headers", "H", false, "Skip headers when dumping CSV")
 	RootCmd.PersistentFlags().StringArrayVarP(&(globalOptions.Filter), "filter", "f", nil, "Filter arguments (e.g. mac=00:86:df:11:22:33)")
 	RootCmd.PersistentFlags().BoolVarP(&(globalOptions.PrettyPrint), "prettyprint", "p", false, "Pretty print json output")
+	RootCmd.PersistentFlags().BoolVarP(&(globalOptions.Force), "force", "F", false, "When used with 'login', force new authentication")
 
 	viper.BindPFlag("server", RootCmd.PersistentFlags().Lookup("server"))
 	viper.BindPFlag("client", RootCmd.PersistentFlags().Lookup("client"))

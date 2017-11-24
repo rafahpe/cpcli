@@ -9,18 +9,28 @@ import (
 
 // Clearpass server interface
 type Clearpass interface {
-	// Login into CPPM, return access and refresh tokens, or error.
-	// If 'user' and 'pass' are not empty, uses auth_type 'password'.
-	// Otherwise, use auth-type 'client_credentials'.
-	Login(ctx context.Context, ip, clientID, secret, user, pass string) (string, string, error)
+	// Login into CPPM. Returns access and refresh tokens, or error.
+	// - 'address' is the CPPM server address.
+	// - 'clientID' is the OAuth2 Client ID
+	// - 'secret' is the OAuth2 Client secret. Empty if client is public (trusted).
+	// - 'user', 'pass' are the username and password for "password"
+	//   authentication. If any of them is empty,  'client_credentials'
+	//   authentication is used instead.
+	Login(ctx context.Context, address, clientID, secret, user, pass string) (string, string, error)
 	// Validate / Refresh credentials.
-	// "secret" may be needed when request_type is 'password' and
-	// the client is not public. Otherwise, leave empty.
-	Validate(ctx context.Context, ip, clientID, secret, token, refresh string) (string, string, error)
+	// "secret" is only needed when request_type is 'password' and
+	// - 'address' is the CPPM server address.
+	// - 'clientID' is the OAuth2 Client ID
+	// - 'secret' is the OAuth2 Client secret. Required if
+	//   authentication type is "password". Othewise, leave blank.
+	// - 'token', 'refresh': the authentication and refresh tokens.
+	//   If a refresh token is provided, attempt to refresh the
+	//   authentication token. Otherwise, just check it is valid.
+	Validate(ctx context.Context, address, clientID, secret, token, refresh string) (string, string, error)
 	// Token obtained after authentication / validation
 	Token() string
 	// Do a REST request to the CPPM.
-	Do(ctx context.Context, method Method, path string, filter map[string]string, request interface{}, pageSize int) (chan Reply, error)
+	Do(ctx context.Context, method Method, path string, filter Filter, request interface{}, pageSize int) (chan Reply, error)
 }
 
 // Clearpass model
@@ -53,7 +63,7 @@ func (c *clearpass) Token() string {
 
 // Follow a stream of results from an endpoint.
 // Filter is a map of fields to filter by (e.g. "mac": "00:01:02:03:04:05")
-func (c *clearpass) Do(ctx context.Context, method Method, path string, filter map[string]string, request interface{}, pageSize int) (chan Reply, error) {
+func (c *clearpass) Do(ctx context.Context, method Method, path string, filter Filter, request interface{}, pageSize int) (chan Reply, error) {
 	if c.url == "" || c.token == "" {
 		return nil, ErrNotLoggedIn
 	}

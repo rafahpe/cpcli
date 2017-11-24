@@ -2,7 +2,6 @@ package model
 
 import (
 	"context"
-	"log"
 	"net/url"
 )
 
@@ -20,7 +19,6 @@ type authReply struct {
 
 // Perform an authentication request
 func (c *clearpass) auth(ctx context.Context, address string, req authRequest) (string, string, error) {
-	log.Println("HACK: auth req = ", req)
 	baseURL := apiURL(address)
 	fullURL := baseURL + "oauth"
 	rep := authReply{}
@@ -50,24 +48,29 @@ func (c *clearpass) Login(ctx context.Context, address, clientID, secret, userna
 
 // Validate the token is still useful
 func (c *clearpass) Validate(ctx context.Context, address, clientID, secret, token, refresh string) (string, string, error) {
-	if refresh == "" {
-		// No refresh, just check the current token is still valid.
-		baseURL := apiURL(address)
-		fullURL := baseURL + "api-client/" + url.PathEscape(clientID)
-		rep := Reply{}
-		if err := rest(ctx, GET, fullURL, token, nil, nil, &rep, c.unsafe); err != nil {
-			return "", "", err
+	// If there is arefresh token, try to refresh auth
+	if refresh != "" {
+		req := authRequest{
+			"grant_type":    "refresh_token",
+			"client_id":     clientID,
+			"refresh_token": refresh,
 		}
-		c.url, c.token, c.refresh = baseURL, token, ""
-		return c.token, c.refresh, nil
+		if secret != "" {
+			req["client_secret"] = secret
+		}
+		t, r, err := c.auth(ctx, address, req)
+		if err == nil {
+			return t, r, err
+		}
 	}
-	req := authRequest{
-		"grant_type":    "refresh_token",
-		"client_id":     clientID,
-		"refresh_token": refresh,
+	// No refresh or it didn't succeed, just check the
+	// current token is still valid.
+	baseURL := apiURL(address)
+	fullURL := baseURL + "api-client/" + url.PathEscape(clientID)
+	rep := Reply{}
+	if err := rest(ctx, GET, fullURL, token, nil, nil, &rep, c.unsafe); err != nil {
+		return "", "", err
 	}
-	if secret != "" {
-		req["client_secret"] = secret
-	}
-	return c.auth(ctx, address, req)
+	c.url, c.token, c.refresh = baseURL, token, ""
+	return c.token, c.refresh, nil
 }

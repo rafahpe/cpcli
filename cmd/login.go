@@ -64,7 +64,7 @@ a client_id and client_secret to reauthenticate.
 			if err := p.save(token, refresh); err != nil {
 				fmt.Println("login Error saving config data: ", err)
 			}
-			fmt.Println("login OK. Token: ", token)
+			fmt.Println("login OK. Authorization: Bearer ", token)
 		}
 	},
 }
@@ -86,7 +86,7 @@ func (p loginCmdP) run() (string, string, error) {
 	token := viper.GetString("token")
 	refresh := viper.GetString("refresh")
 	ctx := context.Background()
-	if token != "" {
+	if token != "" && !globalOptions.Force {
 		token, refresh, err := globalClearpass.Validate(ctx, server, client, "", token, refresh)
 		if err == nil {
 			return token, refresh, nil
