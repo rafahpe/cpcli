@@ -91,6 +91,7 @@ func init() {
 	RootCmd.PersistentFlags().StringP("server", "s", "", "CPPM Server name or IP address")
 	RootCmd.PersistentFlags().StringP("client", "c", "", "Client ID for accesing the CPPM API")
 	RootCmd.PersistentFlags().StringP("token", "t", "", "OAUTH token")
+	RootCmd.PersistentFlags().StringP("refresh", "r", "", "OAUTH refresh token")
 	RootCmd.PersistentFlags().BoolP("unsafe", "u", false, "Skip server certificate verification")
 	RootCmd.PersistentFlags().IntP("pagesize", "P", DefaultPageSize, "Pagesize of the requests")
 
@@ -102,6 +103,7 @@ func init() {
 	viper.BindPFlag("server", RootCmd.PersistentFlags().Lookup("server"))
 	viper.BindPFlag("client", RootCmd.PersistentFlags().Lookup("client"))
 	viper.BindPFlag("token", RootCmd.PersistentFlags().Lookup("token"))
+	viper.BindPFlag("refresh", RootCmd.PersistentFlags().Lookup("refresh"))
 	viper.BindPFlag("unsafe", RootCmd.PersistentFlags().Lookup("unsafe"))
 	viper.BindPFlag("pagesize", RootCmd.PersistentFlags().Lookup("pagesize"))
 }
@@ -142,8 +144,9 @@ func initConfig() {
 	// Init the connection to clearpass
 	server := viper.GetString("server")
 	token := viper.GetString("token")
+	refresh := viper.GetString("refresh")
 	unsafe := viper.GetBool("unsafe")
-	globalClearpass = model.New(server, token, unsafe)
+	globalClearpass = model.New(server, token, refresh, unsafe)
 }
 
 func primeConfigFile(cfgFile string) {

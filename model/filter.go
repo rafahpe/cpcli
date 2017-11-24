@@ -34,7 +34,8 @@ var normalizerTable = map[string]normap{
 	},
 }
 
-// Normalize some known parameters that change format, such as MAC addresses.
+// Normalize some known parameters that have different formats
+// for different endpoints, such as MAC addresses.
 func normalize(f map[string]string, path string) (map[string]interface{}, error) {
 	parts := strings.SplitN(path, "/", 2)
 	if len(parts) > 1 {

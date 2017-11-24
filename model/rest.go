@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -41,7 +42,7 @@ const (
 	PATCH         = "PATCH"
 )
 
-// Reply generic version
+// Reply object, generic version
 type Reply map[string]json.RawMessage
 
 // HalLink is a link inside a struct
@@ -49,7 +50,7 @@ type halLink struct {
 	Href string `json:"href"`
 }
 
-// HalLinks is returned by REST endpoints that manage multiple values
+// HalLinks is returned by REST endpoints that return multiple objects
 type halLinks struct {
 	Self  halLink `json:"self"`
 	First halLink `json:"first"`
@@ -58,18 +59,18 @@ type halLinks struct {
 	Next  halLink `json:"next"`
 }
 
-// WrappedItems wraps an array of items
+// WrappedItems wraps an array of Reply items
 type wrappedItems struct {
 	Items []Reply `json:"items"`
 }
 
-// WrappedReply returned by endpoints that provide multiples values
+// WrappedReply returned by endpoints that return multiple objects
 type wrappedReply struct {
 	Embedded wrappedItems `json:"_embedded"`
 	Links    halLinks     `json:"_links"`
 }
 
-// Exhaust a channel so its goroutine can end
+// Exhaust a channel, dismiss all replies
 func Exhaust(replies chan Reply) {
 	for _ = range replies {
 	}
@@ -121,7 +122,12 @@ func rest(ctx context.Context, method Method, url, token string, query map[strin
 	if resp.StatusCode != 200 {
 		return fmt.Errorf("Error: REST Status %s", resp.Status)
 	}
-	return json.NewDecoder(resp.Body).Decode(reply)
+	respBody, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	/*log.Print("HACK: Response body = ", string(respBody))*/
+	return json.Unmarshal(respBody, reply)
 }
 
 // Flush all replies to the channel
@@ -135,9 +141,9 @@ func (w wrappedReply) flush(output chan Reply) {
 func follow(ctx context.Context, method Method, url, token string, query map[string]string, request interface{}, skipVerify bool) (chan Reply, error) {
 	result := make(chan Reply)
 	errors := make(chan error)
-	go func(result chan Reply, errors chan error) {
+	logger := log.New(os.Stderr, "", 0)
+	go func() {
 		defer close(result)
-		logger := log.New(os.Stderr, "", 0)
 		reply := Reply{}
 		if err := rest(ctx, method, url, token, query, request, &reply, skipVerify); err != nil {
 			errors <- err
@@ -180,7 +186,7 @@ func follow(ctx context.Context, method Method, url, token string, query map[str
 			}
 			wReply.flush(result)
 		}
-	}(result, errors)
+	}()
 	err := <-errors
 	if err != nil {
 		go Exhaust(result)

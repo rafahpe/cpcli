@@ -44,22 +44,24 @@ var loginCmd = &cobra.Command{
 a client_id and client_secret to reauthenticate.
 
   - The Clearpass server address is provided in the 'server' configuration
-    variable, CPPM_server environment variable, or with the -h flag.
+    variable, CPPM_SERVER environment variable, or with the -h flag.
   - The OAUTH token can be provided in the 'token' configuration variable,
-	or the CPPM_TOKEN environment variable, or the -t flag.
+	the CPPM_TOKEN environment variable, or the -t flag.
+  - If you have an OAUTH refresh token, it can be provided in the 'refresh'
+    configuration variable, the CPPM_REFRESH environment variable, or the -r flag.
   - If OAUTH token is missing, invalid or expired, then client_id can be
 	provided in the 'client' config variable, CPPM_CLIENT environment
 	variable, or -c flag.`,
 	Args: cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		p := loginCmdP{cmd}
-		if token, err := p.run(); err != nil {
+		if token, refresh, err := p.run(); err != nil {
 			fmt.Println("No previous token or no longer valid. Error: ", err)
 		} else {
-			if err := p.save(token); err != nil {
+			if err := p.save(token, refresh); err != nil {
 				fmt.Println("login Error saving config data: ", err)
 			}
-			fmt.Println("login OK. Token: ", globalClearpass.Token())
+			fmt.Println("login OK. Token: ", token)
 		}
 	},
 }
@@ -69,35 +71,39 @@ func init() {
 }
 
 // Run login
-func (p loginCmdP) run() (string, error) {
+func (p loginCmdP) run() (string, string, error) {
 	server := viper.GetString("server")
 	if server == "" {
-		return "", ErrMissingserver
+		return "", "", ErrMissingserver
 	}
 	client := viper.GetString("client")
 	if client == "" {
-		return "", ErrMissingCreds
+		return "", "", ErrMissingCreds
 	}
 	token := viper.GetString("token")
+	refresh := viper.GetString("refresh")
 	ctx := context.Background()
 	if token != "" {
-		err := globalClearpass.Validate(ctx, server, client, token)
+		token, refresh, err := globalClearpass.Validate(ctx, server, client, token, refresh)
 		if err == nil {
-			return token, nil
+			return token, refresh, nil
 		}
 		fmt.Println("login.run Error: ", err)
 	}
 	passwd, err := readline(fmt.Sprintf("Secret for '%s': ", client), true)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	return globalClearpass.Login(ctx, server, client, passwd)
 }
 
 // Save login parameters
-func (p loginCmdP) save(token string) error {
+func (p loginCmdP) save(token, refresh string) error {
 	if token != "" {
 		viper.Set("token", token)
+	}
+	if refresh != "" {
+		viper.Set("refresh", refresh)
 	}
 	return viper.WriteConfig()
 }

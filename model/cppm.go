@@ -9,10 +9,10 @@ import (
 
 // Clearpass server interface
 type Clearpass interface {
-	// Login into CPPM, return token or error
-	Login(ctx context.Context, ip, clientID, secret string) (string, error)
-	// Validate credentials
-	Validate(ctx context.Context, ip, clientID, token string) error
+	// Login into CPPM, return access and refresh tokens, or error
+	Login(ctx context.Context, ip, clientID, secret string) (string, string, error)
+	// Validate / Refresh credentials
+	Validate(ctx context.Context, ip, clientID, token, refresh string) (string, string, error)
 	// Token obtained after authentication / validation
 	Token() string
 	// Do a REST request to the CPPM.
@@ -21,17 +21,24 @@ type Clearpass interface {
 
 // Clearpass model
 type clearpass struct {
-	unsafe bool
-	url    string
-	token  string
+	unsafe  bool
+	url     string
+	token   string
+	refresh string
+}
+
+// apiURL returns the URL of the API
+func apiURL(address string) string {
+	return fmt.Sprintf("https://%s:443/api/", url.PathEscape(address))
 }
 
 // New creates a Clearpass object with cached IP and token
-func New(ip, token string, skipVerify bool) Clearpass {
+func New(address, token, refresh string, skipVerify bool) Clearpass {
 	return &clearpass{
-		unsafe: skipVerify,
-		url:    fmt.Sprintf("https://%s:443/api/", url.PathEscape(ip)),
-		token:  token,
+		unsafe:  skipVerify,
+		url:     apiURL(address),
+		token:   token,
+		refresh: refresh,
 	}
 }
 
