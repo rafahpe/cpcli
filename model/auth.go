@@ -2,6 +2,7 @@ package model
 
 import (
 	"context"
+	"log"
 	"net/url"
 )
 
@@ -19,6 +20,7 @@ type authReply struct {
 
 // Perform an authentication request
 func (c *clearpass) auth(ctx context.Context, address string, req authRequest) (string, string, error) {
+	log.Println("HACK: auth req = ", req)
 	baseURL := apiURL(address)
 	fullURL := baseURL + "oauth"
 	rep := authReply{}
@@ -30,17 +32,24 @@ func (c *clearpass) auth(ctx context.Context, address string, req authRequest) (
 }
 
 // Login into clearpass with the provided credentials, return token.
-func (c *clearpass) Login(ctx context.Context, address, clientID, secret string) (string, string, error) {
+func (c *clearpass) Login(ctx context.Context, address, clientID, secret, username, pass string) (string, string, error) {
 	req := authRequest{
-		"grant_type":    "client_credentials",
-		"client_id":     clientID,
-		"client_secret": secret,
+		"grant_type": "client_credentials",
+		"client_id":  clientID,
+	}
+	if secret != "" {
+		req["client_secret"] = secret
+	}
+	if username != "" && pass != "" {
+		req["grant_type"] = "password"
+		req["username"] = username
+		req["password"] = pass
 	}
 	return c.auth(ctx, address, req)
 }
 
 // Validate the token is still useful
-func (c *clearpass) Validate(ctx context.Context, address, clientID, token, refresh string) (string, string, error) {
+func (c *clearpass) Validate(ctx context.Context, address, clientID, secret, token, refresh string) (string, string, error) {
 	if refresh == "" {
 		// No refresh, just check the current token is still valid.
 		baseURL := apiURL(address)
@@ -56,6 +65,9 @@ func (c *clearpass) Validate(ctx context.Context, address, clientID, token, refr
 		"grant_type":    "refresh_token",
 		"client_id":     clientID,
 		"refresh_token": refresh,
+	}
+	if secret != "" {
+		req["client_secret"] = secret
 	}
 	return c.auth(ctx, address, req)
 }

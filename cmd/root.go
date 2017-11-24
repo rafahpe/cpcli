@@ -90,9 +90,10 @@ func init() {
 
 	RootCmd.PersistentFlags().StringP("server", "s", "", "CPPM Server name or IP address")
 	RootCmd.PersistentFlags().StringP("client", "c", "", "Client ID for accesing the CPPM API")
+	RootCmd.PersistentFlags().StringP("user", "u", "", "User name for accesing the CPPM API")
 	RootCmd.PersistentFlags().StringP("token", "t", "", "OAUTH token")
 	RootCmd.PersistentFlags().StringP("refresh", "r", "", "OAUTH refresh token")
-	RootCmd.PersistentFlags().BoolP("unsafe", "u", false, "Skip server certificate verification")
+	RootCmd.PersistentFlags().BoolP("unsafe", "U", false, "Skip server certificate verification")
 	RootCmd.PersistentFlags().IntP("pagesize", "P", DefaultPageSize, "Pagesize of the requests")
 
 	// Flags that are shared by several commands.
@@ -102,6 +103,7 @@ func init() {
 
 	viper.BindPFlag("server", RootCmd.PersistentFlags().Lookup("server"))
 	viper.BindPFlag("client", RootCmd.PersistentFlags().Lookup("client"))
+	viper.BindPFlag("user", RootCmd.PersistentFlags().Lookup("user"))
 	viper.BindPFlag("token", RootCmd.PersistentFlags().Lookup("token"))
 	viper.BindPFlag("refresh", RootCmd.PersistentFlags().Lookup("refresh"))
 	viper.BindPFlag("unsafe", RootCmd.PersistentFlags().Lookup("unsafe"))

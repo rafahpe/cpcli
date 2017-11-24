@@ -9,10 +9,14 @@ import (
 
 // Clearpass server interface
 type Clearpass interface {
-	// Login into CPPM, return access and refresh tokens, or error
-	Login(ctx context.Context, ip, clientID, secret string) (string, string, error)
-	// Validate / Refresh credentials
-	Validate(ctx context.Context, ip, clientID, token, refresh string) (string, string, error)
+	// Login into CPPM, return access and refresh tokens, or error.
+	// If 'user' and 'pass' are not empty, uses auth_type 'password'.
+	// Otherwise, use auth-type 'client_credentials'.
+	Login(ctx context.Context, ip, clientID, secret, user, pass string) (string, string, error)
+	// Validate / Refresh credentials.
+	// "secret" may be needed when request_type is 'password' and
+	// the client is not public. Otherwise, leave empty.
+	Validate(ctx context.Context, ip, clientID, secret, token, refresh string) (string, string, error)
 	// Token obtained after authentication / validation
 	Token() string
 	// Do a REST request to the CPPM.

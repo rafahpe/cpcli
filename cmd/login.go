@@ -51,12 +51,15 @@ a client_id and client_secret to reauthenticate.
     configuration variable, the CPPM_REFRESH environment variable, or the -r flag.
   - If OAUTH token is missing, invalid or expired, then client_id can be
 	provided in the 'client' config variable, CPPM_CLIENT environment
-	variable, or -c flag.`,
+	variable, or -c flag.
+  - If you are using username/password based auth, besides the client ID,
+	you will need to provide your username with the 'user' config variable,
+	CPPM_USER environment variable, or -u flag`,
 	Args: cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		p := loginCmdP{cmd}
 		if token, refresh, err := p.run(); err != nil {
-			fmt.Println("No previous token or no longer valid. Error: ", err)
+			fmt.Println("Login error: ", err)
 		} else {
 			if err := p.save(token, refresh); err != nil {
 				fmt.Println("login Error saving config data: ", err)
@@ -84,17 +87,24 @@ func (p loginCmdP) run() (string, string, error) {
 	refresh := viper.GetString("refresh")
 	ctx := context.Background()
 	if token != "" {
-		token, refresh, err := globalClearpass.Validate(ctx, server, client, token, refresh)
+		token, refresh, err := globalClearpass.Validate(ctx, server, client, "", token, refresh)
 		if err == nil {
 			return token, refresh, nil
 		}
 		fmt.Println("login.run Error: ", err)
 	}
-	passwd, err := readline(fmt.Sprintf("Secret for '%s': ", client), true)
+	secret, err := readline(fmt.Sprintf("Secret for '%s' (leave blank if public client): ", client), true)
 	if err != nil {
 		return "", "", err
 	}
-	return globalClearpass.Login(ctx, server, client, passwd)
+	user, password := viper.GetString("user"), ""
+	if user != "" {
+		password, err = readline(fmt.Sprintf("Password for '%s' (leave blank if auth type is 'client_credentials'): ", user), true)
+		if err != nil {
+			return "", "", err
+		}
+	}
+	return globalClearpass.Login(ctx, server, client, secret, user, password)
 }
 
 // Save login parameters
