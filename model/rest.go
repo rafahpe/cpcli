@@ -176,7 +176,7 @@ func follow(ctx context.Context, method Method, url, token string, query map[str
 		for {
 			// Run new request from link provided by HAL
 			url := wReply.Links.Next.Href
-			if url == "" {
+			if url == "" || wReply.Links.Next.Href == wReply.Links.Self.Href {
 				return
 			}
 			if err := rest(ctx, GET, url, token, nil, nil, &wReply, skipVerify); err != nil {
