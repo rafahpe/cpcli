@@ -59,26 +59,26 @@ func runCmd(cmd *cobra.Command, args []string, method model.Method) {
 	if items == nil {
 		doRequest(model.GET, path, filter, nil, format)
 	} else {
-		for _ = range items {
+		for range items {
 			doRequest(model.GET, path, filter, nil, format)
 		}
 	}
 }
 
 // Read input line by line, if it is piped from somewhere.
-func readInput() (chan model.Reply, error) {
+func readInput() (chan model.RawReply, error) {
 	stat, err := os.Stdin.Stat()
 	if err != nil {
 		return nil, fmt.Errorf("Error stating os.Stdin: %s", err)
 	}
 	if (stat.Mode() & os.ModeCharDevice) == 0 {
 		scanner := bufio.NewScanner(os.Stdin)
-		replies := make(chan model.Reply)
-		go func(replies chan model.Reply, scanner *bufio.Scanner) {
+		replies := make(chan model.RawReply)
+		go func(replies chan model.RawReply, scanner *bufio.Scanner) {
 			defer close(replies)
 			for scanner.Scan() {
 				text := scanner.Text()
-				reply := model.Reply{}
+				reply := model.RawReply{}
 				if err := json.Unmarshal(([]byte)(text), &reply); err != nil {
 					log.Print("Error unmarshalling '", text, "': ", err)
 				} else {
@@ -109,7 +109,8 @@ func doRequest(method model.Method, path string, filter model.Filter, request in
 		return
 	}
 	// Otherwise, output may be pipe. Use newline-delimited json.
-	for reply := range feed {
+	for feed.Next() {
+		reply := feed.Get()
 		txt, err := json.Marshal(reply)
 		if err != nil {
 			log.Print(err)

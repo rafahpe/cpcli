@@ -8,9 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
-	"os"
 	"strings"
 
 	"golang.org/x/net/context/ctxhttp"
@@ -71,8 +69,77 @@ const (
 	PATCH         = "PATCH"
 )
 
-// Reply object, generic version
-type Reply map[string]json.RawMessage
+// RawReply is the json body of each reply
+type RawReply map[string]json.RawMessage
+
+// Reply object, "sort of" iterable object that allows iteration.
+// you can iterate over this with a loop like:
+// for r.Next() {
+//   current := r.Get()
+// }
+// if r.Error() != nil {
+//   iteration ended with error
+// }
+type Reply interface {
+	Next() bool    // Next returns true if there is a reply to Get
+	Get() RawReply // Get the current reply
+	Error() error  // Error returns the non-nil error if the iteration broke
+}
+
+// replyData is the actual reply returned by rest calls
+type replyData struct {
+	items     []RawReply
+	lastError error
+}
+
+// reply is the implementation of the Reply iterator
+type reply struct {
+	flow chan replyData
+	curr replyData
+	offs int
+}
+
+// Next implements Reply interface
+func (r *reply) Next() bool {
+	// If curr is empty or offs has reached the last item, get a new reply
+	if r.curr.items == nil || r.offs >= (len(r.curr.items)-1) {
+		// There won't be more replies if the flow is nil, or last reply was an error...
+		if r.flow == nil || r.curr.lastError != nil {
+			return false
+		}
+		// The current data is not an error, get a new one.
+		r.curr = <-r.flow
+		r.offs = 0
+		// If the channel is closed, return false
+		if r.curr.items == nil {
+			r.flow = nil
+			return false
+		}
+		return true
+	}
+	r.offs++
+	return true
+}
+
+// Error implements Reply interface
+func (r *reply) Error() error {
+	return r.curr.lastError
+}
+
+// Get implements Reply interface
+func (r *reply) Get() RawReply {
+	return r.curr.items[r.offs]
+}
+
+// NewReply wraps a RawReply inside a Reply iterator
+func NewReply(r RawReply) Reply {
+	return &reply{
+		curr: replyData{
+			items: []RawReply{r},
+		},
+		offs: -1, // So it is incremented to 0 when Next() is called
+	}
+}
 
 // HalLink is a link inside a struct
 type halLink struct {
@@ -90,7 +157,7 @@ type halLinks struct {
 
 // WrappedItems wraps an array of Reply items
 type wrappedItems struct {
-	Items []Reply `json:"items"`
+	Items []RawReply `json:"items"`
 }
 
 // WrappedReply returned by endpoints that return multiple objects
@@ -100,8 +167,8 @@ type wrappedReply struct {
 }
 
 // Exhaust a channel, dismiss all replies
-func Exhaust(replies chan Reply) {
-	for _ = range replies {
+func Exhaust(replies Reply) {
+	for replies.Next() {
 	}
 }
 
@@ -173,49 +240,41 @@ func rest(ctx context.Context, method Method, url, token string, query map[strin
 	return nil
 }
 
-// Flush all replies to the channel
-func (w wrappedReply) flush(output chan Reply) {
-	for _, item := range w.Embedded.Items {
-		output <- item
-	}
-}
-
 // Follow a paginated stream
-func follow(ctx context.Context, method Method, url, token string, query map[string]string, request interface{}, skipVerify bool) (chan Reply, error) {
-	result := make(chan Reply)
-	errors := make(chan error)
-	logger := log.New(os.Stderr, "", 0)
+func follow(ctx context.Context, method Method, url, token string, query map[string]string, request interface{}, skipVerify bool) (Reply, error) {
+	result := make(chan replyData)
+	waitme := make(chan error)
 	go func() {
 		defer close(result)
-		reply := Reply{}
+		reply := RawReply{}
 		if err := rest(ctx, method, url, token, query, request, &reply, skipVerify); err != nil {
-			errors <- err
+			waitme <- err
 			return
 		}
 		// If it is not a list of embedded replies, but just a single
 		// item, return it.
 		rawEmbedded, ok := reply["_embedded"]
 		if !ok {
-			errors <- nil
-			result <- reply
+			close(waitme)
+			result <- replyData{items: []RawReply{reply}}
 			return
 		}
 		// If embedded, flush the first batch of results
 		wReply := wrappedReply{}
 		if err := json.Unmarshal(rawEmbedded, &wReply.Embedded); err != nil {
-			errors <- err
+			waitme <- err
 			return
 		}
 		rawLinks, ok := reply["_links"]
 		if ok {
 			if err := json.Unmarshal(rawLinks, &wReply.Links); err != nil {
-				errors <- err
+				waitme <- err
 				return
 			}
 		}
-		// Release the caller function, continue in background
-		close(errors)
-		wReply.flush(result)
+		// Release the caller
+		close(waitme)
+		result <- replyData{items: wReply.Embedded.Items}
 		for {
 			// Run new request from link provided by HAL
 			url := wReply.Links.Next.Href
@@ -223,17 +282,14 @@ func follow(ctx context.Context, method Method, url, token string, query map[str
 				return
 			}
 			if err := rest(ctx, GET, url, token, nil, nil, &wReply, skipVerify); err != nil {
-				// Error channel is already closed. Just log the problem.
-				logger.Print(err)
+				result <- replyData{lastError: err}
 				return
 			}
-			wReply.flush(result)
+			result <- replyData{items: wReply.Embedded.Items}
 		}
 	}()
-	err := <-errors
-	if err != nil {
-		go Exhaust(result)
+	if err := <-waitme; err != nil {
 		return nil, err
 	}
-	return result, nil
+	return &reply{flow: result}, nil
 }

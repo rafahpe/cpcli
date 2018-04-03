@@ -67,7 +67,7 @@ func (c *clearpass) Validate(ctx context.Context, address, clientID, secret, tok
 	// current token is still valid.
 	baseURL := apiURL(address)
 	fullURL := baseURL + "/api-client/" + url.PathEscape(clientID)
-	rep := Reply{}
+	rep := RawReply{}
 	if err := rest(ctx, GET, fullURL, token, nil, nil, &rep, c.unsafe); err != nil {
 		return "", "", err
 	}

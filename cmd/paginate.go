@@ -12,7 +12,7 @@ import (
 )
 
 // Paginate the feed of replies, filtering by args
-func paginate(pages chan model.Reply, format []string) error {
+func paginate(pages model.Reply, format []string) error {
 	defer model.Exhaust(pages)
 	// If output is CSV-like, dump the header
 	skipHeaders := globalOptions.SkipHeaders
@@ -27,7 +27,8 @@ func paginate(pages chan model.Reply, format []string) error {
 	// Keep reading pages of data
 	reader := bufio.NewReader(os.Stdin)
 	lineno := 0
-	for page := range pages {
+	for pages.Next() {
+		page := pages.Get()
 		if format != nil && len(format) > 0 {
 			sep := ""
 			for _, name := range format {
@@ -57,11 +58,14 @@ func paginate(pages chan model.Reply, format []string) error {
 			}
 		}
 	}
+	if err := pages.Error(); pages != nil {
+		fmt.Println("Request ended with error: ", err)
+	}
 	return nil
 }
 
 // Pick particular attributes form a Reply object
-func pick(data model.Reply, attrib string) string {
+func pick(data model.RawReply, attrib string) string {
 	parts := strings.Split(attrib, ".")
 	lenp := len(parts)
 	// If the string is a dot-separated path, go deep
@@ -70,7 +74,7 @@ func pick(data model.Reply, attrib string) string {
 		if !ok {
 			return ""
 		}
-		data = make(model.Reply)
+		data = make(model.RawReply)
 		if err := json.Unmarshal(newData, &data); err != nil {
 			return ""
 		}
