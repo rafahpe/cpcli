@@ -96,7 +96,7 @@ func readInput() (chan model.Reply, error) {
 func doRequest(method model.Method, path string, filter model.Filter, request interface{}, format []string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	feed, err := globalClearpass.Do(ctx, method, path, filter, request, globalOptions.PageSize)
+	feed, err := globalClearpass.Do(ctx, method, path, request, model.Params{Filter: filter, PageSize: globalOptions.PageSize})
 	if err != nil {
 		log.Print(err)
 		return

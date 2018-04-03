@@ -20,7 +20,7 @@ type authReply struct {
 // Perform an authentication request
 func (c *clearpass) auth(ctx context.Context, address string, req authRequest) (string, string, error) {
 	baseURL := apiURL(address)
-	fullURL := baseURL + "oauth"
+	fullURL := baseURL + "/oauth"
 	rep := authReply{}
 	if err := rest(ctx, POST, fullURL, "", nil, req, &rep, c.unsafe); err != nil {
 		return "", "", err
@@ -66,7 +66,7 @@ func (c *clearpass) Validate(ctx context.Context, address, clientID, secret, tok
 	// No refresh or it didn't succeed, just check the
 	// current token is still valid.
 	baseURL := apiURL(address)
-	fullURL := baseURL + "api-client/" + url.PathEscape(clientID)
+	fullURL := baseURL + "/api-client/" + url.PathEscape(clientID)
 	rep := Reply{}
 	if err := rest(ctx, GET, fullURL, token, nil, nil, &rep, c.unsafe); err != nil {
 		return "", "", err

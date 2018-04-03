@@ -7,10 +7,18 @@ import (
 	"net/url"
 )
 
+// Params for ClearPass request
+type Params struct {
+	Sort     string // Field to sort by (default "-id")
+	Offset   int    // Start offset (default 0)
+	PageSize int    // Page size (default 25)
+	Filter   Filter // Filter as a JSON object
+}
+
 // Clearpass server interface
 type Clearpass interface {
 	// Login into CPPM. Returns access and refresh tokens, or error.
-	// - 'address' is the CPPM server address.
+	// - 'address' is the CPPM server address (:port, if different from 443).
 	// - 'clientID' is the OAuth2 Client ID
 	// - 'secret' is the OAuth2 Client secret. Empty if client is public (trusted).
 	// - 'user', 'pass' are the username and password for "password"
@@ -19,7 +27,7 @@ type Clearpass interface {
 	Login(ctx context.Context, address, clientID, secret, user, pass string) (string, string, error)
 	// Validate / Refresh credentials.
 	// "secret" is only needed when request_type is 'password' and
-	// - 'address' is the CPPM server address.
+	// - 'address' is the CPPM server address (:port, if different from 443).
 	// - 'clientID' is the OAuth2 Client ID
 	// - 'secret' is the OAuth2 Client secret. Required if
 	//   authentication type is "password". Othewise, leave blank.
@@ -30,7 +38,7 @@ type Clearpass interface {
 	// Token obtained after authentication / validation
 	Token() string
 	// Do a REST request to the CPPM.
-	Do(ctx context.Context, method Method, path string, filter Filter, request interface{}, pageSize int) (chan Reply, error)
+	Do(ctx context.Context, method Method, path string, request interface{}, params Params) (chan Reply, error)
 }
 
 // Clearpass model
@@ -43,7 +51,7 @@ type clearpass struct {
 
 // apiURL returns the URL of the API
 func apiURL(address string) string {
-	return fmt.Sprintf("https://%s:443/api/", url.PathEscape(address))
+	return fmt.Sprintf("https://%s/api", url.PathEscape(address))
 }
 
 // New creates a Clearpass object with cached IP and token
@@ -63,22 +71,28 @@ func (c *clearpass) Token() string {
 
 // Follow a stream of results from an endpoint.
 // Filter is a map of fields to filter by (e.g. "mac": "00:01:02:03:04:05")
-func (c *clearpass) Do(ctx context.Context, method Method, path string, filter Filter, request interface{}, pageSize int) (chan Reply, error) {
+func (c *clearpass) Do(ctx context.Context, method Method, path string, request interface{}, params Params) (chan Reply, error) {
 	if c.url == "" || c.token == "" {
 		return nil, ErrNotLoggedIn
 	}
-	if pageSize <= 0 {
+	if params.PageSize < 0 {
 		return nil, ErrPageTooSmall
 	}
 	defaults := map[string]string{
 		"filter":          "{}",
 		"sort":            "-id",
-		"offset":          "0",
-		"limit":           fmt.Sprintf("%d", pageSize),
+		"offset":          fmt.Sprintf("%d", params.Offset),
+		"limit":           "25",
 		"calculate_count": "false",
 	}
-	if filter != nil && len(filter) > 0 {
-		norm, err := normalize(filter, path)
+	if params.Sort != "" {
+		defaults["sort"] = params.Sort
+	}
+	if params.PageSize > 0 {
+		defaults["limit"] = fmt.Sprintf("%d", params.PageSize)
+	}
+	if params.Filter != nil && len(params.Filter) > 0 {
+		norm, err := normalize(params.Filter, path)
 		if err != nil {
 			return nil, err
 		}
