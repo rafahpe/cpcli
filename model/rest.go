@@ -134,37 +134,23 @@ func follow(ctx context.Context, method Method, url, token string, query map[str
 	waitme := make(chan error)
 	go func() {
 		defer close(result)
-		reply := RawReply{}
+		var reply RawReply
 		// Open the query and check for error.
 		if err := rest(ctx, method, url, token, query, request, &reply, skipVerify); err != nil {
 			waitme <- err
 			return
 		}
-		// If it is not a list of embedded replies, but just a single
-		// item, return it.
-		rawEmbedded, ok := reply["_embedded"]
-		if !ok {
-			close(waitme)
+		// Release the caller
+		close(waitme)
+		// If it is not a wrapped reply, but a strange item, return it straight away
+		var wReply wrappedReply
+		if err := json.Unmarshal(reply, &wReply); err != nil {
 			result <- currentReply{items: []RawReply{reply}}
 			return
 		}
-		// If embedded, flush the first batch of results
-		wReply := wrappedReply{}
-		if err := json.Unmarshal(rawEmbedded, &wReply.Embedded); err != nil {
-			waitme <- err
-			return
-		}
-		rawLinks, ok := reply["_links"]
-		if ok {
-			if err := json.Unmarshal(rawLinks, &wReply.Links); err != nil {
-				waitme <- err
-				return
-			}
-		}
-		// Release the caller
-		close(waitme)
-		result <- currentReply{items: wReply.Embedded.Items}
+		// If it is a wrappedReply, iterate on it
 		for {
+			result <- currentReply{items: wReply.Embedded.Items}
 			// Run new request from link provided by HAL
 			url := wReply.Links.Next.Href
 			if url == "" || wReply.Links.Next.Href == wReply.Links.Self.Href {
@@ -174,7 +160,6 @@ func follow(ctx context.Context, method Method, url, token string, query map[str
 				result <- currentReply{lastError: err}
 				return
 			}
-			result <- currentReply{items: wReply.Embedded.Items}
 		}
 	}()
 	if err := <-waitme; err != nil {

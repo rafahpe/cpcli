@@ -6,7 +6,7 @@ import (
 )
 
 // RawReply is the json body of each reply
-type RawReply map[string]json.RawMessage
+type RawReply = json.RawMessage
 
 // Reply object, "sort of" iterable object that allows iteration.
 // you can iterate over this with a loop like:
@@ -79,7 +79,7 @@ func NewReply(r RawReply) Reply {
 }
 
 // Pick particular attributes form a RawReply object
-func (data RawReply) pick(attrib string) string {
+func pick(data map[string]json.RawMessage, attrib string) string {
 	parts := strings.Split(attrib, ".")
 	lenp := len(parts)
 	// If the string is a dot-separated path, go deep
@@ -88,7 +88,6 @@ func (data RawReply) pick(attrib string) string {
 		if !ok {
 			return ""
 		}
-		data = make(RawReply)
 		if err := json.Unmarshal(newData, &data); err != nil {
 			return ""
 		}
@@ -105,10 +104,14 @@ func (data RawReply) pick(attrib string) string {
 }
 
 // ToCSV returns a line with the selected attribs of the object
-func (data RawReply) ToCSV(selectors []string) string {
+func ToCSV(data RawReply, selectors []string) string {
 	result := make([]string, 0, len(selectors))
+	var mapdata map[string]json.RawMessage
+	if err := json.Unmarshal(data, &mapdata); err != nil {
+		return ""
+	}
 	for _, attrib := range selectors {
-		result = append(result, data.pick(attrib))
+		result = append(result, pick(mapdata, attrib))
 	}
 	return strings.Join(result, ";")
 }

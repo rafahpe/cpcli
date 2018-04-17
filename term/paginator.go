@@ -10,6 +10,7 @@ import (
 // paginator Keeps count of output lines, prompts for continue if page size exceeded
 type paginator struct {
 	reader           *bufio.Reader
+	logger           *log.Logger
 	lineno, pageSize int
 }
 
@@ -20,6 +21,7 @@ func (options Options) newPaginator() paginator {
 	}
 	return paginator{
 		reader:   bufio.NewReader(os.Stdin),
+		logger:   log.New(os.Stderr, "", 0),
 		pageSize: options.PageSize,
 	}
 }
@@ -32,7 +34,7 @@ func (p *paginator) next() (bool, error) {
 	}
 	p.lineno++
 	if p.lineno >= p.pageSize {
-		log.Println("Press q to quit, enter to continue")
+		p.logger.Println("Press q to quit, enter to continue")
 		r, _, err := p.reader.ReadRune()
 		if err != nil {
 			return false, err

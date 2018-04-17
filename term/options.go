@@ -46,7 +46,7 @@ func (options Options) Output(pages model.Reply, format []string) error {
 // Serializes a reply according to the options
 func (options Options) serialize(item model.RawReply, format []string) (string, error) {
 	if format != nil && len(format) > 0 {
-		return item.ToCSV(format), nil
+		return model.ToCSV(item, format), nil
 	}
 	var output []byte
 	var err error
