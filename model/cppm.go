@@ -7,6 +7,9 @@ import (
 	"net/url"
 )
 
+// ErrPageTooSmall when paginated commands are givel a page size too small (<=0)
+const ErrPageTooSmall = Error("Page size is too small")
+
 // Params for ClearPass request
 type Params struct {
 	Sort     string // Field to sort by (default "-id")
@@ -26,11 +29,9 @@ type Clearpass interface {
 	//   authentication is used instead.
 	Login(ctx context.Context, address, clientID, secret, user, pass string) (string, string, error)
 	// Validate / Refresh credentials.
-	// "secret" is only needed when request_type is 'password' and
 	// - 'address' is the CPPM server address (:port, if different from 443).
 	// - 'clientID' is the OAuth2 Client ID
-	// - 'secret' is the OAuth2 Client secret. Required if
-	//   authentication type is "password". Othewise, leave blank.
+	// - 'secret' is the OAuth2 Client secret.
 	// - 'token', 'refresh': the authentication and refresh tokens.
 	//   If a refresh token is provided, attempt to refresh the
 	//   authentication token. Otherwise, just check it is valid.
@@ -70,7 +71,6 @@ func (c *clearpass) Token() string {
 }
 
 // Follow a stream of results from an endpoint.
-// Filter is a map of fields to filter by (e.g. "mac": "00:01:02:03:04:05")
 func (c *clearpass) Do(ctx context.Context, method Method, path string, request interface{}, params Params) (Reply, error) {
 	if c.url == "" || c.token == "" {
 		return nil, ErrNotLoggedIn
@@ -102,5 +102,5 @@ func (c *clearpass) Do(ctx context.Context, method Method, path string, request 
 		}
 		defaults["filter"] = string(val)
 	}
-	return follow(ctx, method, c.url+path, c.token, defaults, request, c.unsafe)
+	return follow(ctx, method, c.url+"/"+path, c.token, defaults, request, c.unsafe)
 }

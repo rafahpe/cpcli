@@ -54,9 +54,7 @@ func (c *clearpass) Validate(ctx context.Context, address, clientID, secret, tok
 			"grant_type":    "refresh_token",
 			"client_id":     clientID,
 			"refresh_token": refresh,
-		}
-		if secret != "" {
-			req["client_secret"] = secret
+			"client_secret": secret,
 		}
 		t, r, err := c.auth(ctx, address, req)
 		if err == nil {

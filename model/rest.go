@@ -9,55 +9,15 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
-	"strings"
 
 	"golang.org/x/net/context/ctxhttp"
 )
 
-// Error type
-type Error string
-
-// Error implements Error interface
-func (e Error) Error() string {
-	return string(e)
-}
-
 // ErrNotLoggedIn returned when the user is not logged into CPPM yet
 const ErrNotLoggedIn = Error("Not authorized. Make sure you log in and your account has the proper privileges")
 
-// ErrPageTooSmall when paginated commands are givel a page size too small (<=0)
-const ErrPageTooSmall = Error("Page size is too small")
-
 // Method is the HTTP method for the request
 type Method string
-
-// RestError encodes info about REST errors
-type RestError struct {
-	Err        error
-	Method     string
-	URL        string
-	Query      string
-	Unsafe     bool
-	Header     http.Header
-	Body       string
-	StatusCode int
-	Reply      string
-}
-
-// Error implements Error interface
-func (e RestError) Error() string {
-	return strings.Join([]string{
-		e.Err.Error(),
-		fmt.Sprint("Method: ", e.Method),
-		fmt.Sprint("URL: ", e.URL),
-		fmt.Sprint("Query: ", e.Query),
-		fmt.Sprint("Unsafe: ", e.Unsafe),
-		fmt.Sprint("Header: ", e.Header),
-		fmt.Sprint("Body: ", e.Body),
-		fmt.Sprint("StatusCode: ", e.StatusCode),
-		fmt.Sprint("Reply: ", e.Reply),
-	}, "\n  ")
-}
 
 // HTTP methods supported
 const (
@@ -68,78 +28,6 @@ const (
 	DELETE        = "DELETE"
 	PATCH         = "PATCH"
 )
-
-// RawReply is the json body of each reply
-type RawReply map[string]json.RawMessage
-
-// Reply object, "sort of" iterable object that allows iteration.
-// you can iterate over this with a loop like:
-// for r.Next() {
-//   current := r.Get()
-// }
-// if r.Error() != nil {
-//   iteration ended with error
-// }
-type Reply interface {
-	Next() bool    // Next returns true if there is a reply to Get
-	Get() RawReply // Get the current reply
-	Error() error  // Error returns the non-nil error if the iteration broke
-}
-
-// replyData is the actual reply returned by rest calls
-type replyData struct {
-	items     []RawReply
-	lastError error
-}
-
-// reply is the implementation of the Reply iterator
-type reply struct {
-	flow chan replyData
-	curr replyData
-	offs int
-}
-
-// Next implements Reply interface
-func (r *reply) Next() bool {
-	// If curr is empty or offs has reached the last item, get a new reply
-	if r.curr.items == nil || r.offs >= (len(r.curr.items)-1) {
-		// There won't be more replies if the flow is nil, or last reply was an error...
-		if r.flow == nil || r.curr.lastError != nil {
-			return false
-		}
-		// The current data is not an error, get a new one.
-		r.curr = <-r.flow
-		r.offs = 0
-		// If the channel is closed, return false
-		if r.curr.items == nil {
-			r.flow = nil
-			return false
-		}
-		return true
-	}
-	r.offs++
-	return true
-}
-
-// Error implements Reply interface
-func (r *reply) Error() error {
-	return r.curr.lastError
-}
-
-// Get implements Reply interface
-func (r *reply) Get() RawReply {
-	return r.curr.items[r.offs]
-}
-
-// NewReply wraps a RawReply inside a Reply iterator
-func NewReply(r RawReply) Reply {
-	return &reply{
-		curr: replyData{
-			items: []RawReply{r},
-		},
-		offs: -1, // So it is incremented to 0 when Next() is called
-	}
-}
 
 // HalLink is a link inside a struct
 type halLink struct {
@@ -242,11 +130,12 @@ func rest(ctx context.Context, method Method, url, token string, query map[strin
 
 // Follow a paginated stream
 func follow(ctx context.Context, method Method, url, token string, query map[string]string, request interface{}, skipVerify bool) (Reply, error) {
-	result := make(chan replyData)
+	result := make(chan currentReply)
 	waitme := make(chan error)
 	go func() {
 		defer close(result)
 		reply := RawReply{}
+		// Open the query and check for error.
 		if err := rest(ctx, method, url, token, query, request, &reply, skipVerify); err != nil {
 			waitme <- err
 			return
@@ -256,7 +145,7 @@ func follow(ctx context.Context, method Method, url, token string, query map[str
 		rawEmbedded, ok := reply["_embedded"]
 		if !ok {
 			close(waitme)
-			result <- replyData{items: []RawReply{reply}}
+			result <- currentReply{items: []RawReply{reply}}
 			return
 		}
 		// If embedded, flush the first batch of results
@@ -274,7 +163,7 @@ func follow(ctx context.Context, method Method, url, token string, query map[str
 		}
 		// Release the caller
 		close(waitme)
-		result <- replyData{items: wReply.Embedded.Items}
+		result <- currentReply{items: wReply.Embedded.Items}
 		for {
 			// Run new request from link provided by HAL
 			url := wReply.Links.Next.Href
@@ -282,14 +171,14 @@ func follow(ctx context.Context, method Method, url, token string, query map[str
 				return
 			}
 			if err := rest(ctx, GET, url, token, nil, nil, &wReply, skipVerify); err != nil {
-				result <- replyData{lastError: err}
+				result <- currentReply{lastError: err}
 				return
 			}
-			result <- replyData{items: wReply.Embedded.Items}
+			result <- currentReply{items: wReply.Embedded.Items}
 		}
 	}()
 	if err := <-waitme; err != nil {
 		return nil, err
 	}
-	return &reply{flow: result}, nil
+	return &reply{stream: result}, nil
 }

@@ -29,7 +29,9 @@ var getCmd = &cobra.Command{
   - If some parameters are provided, they are considered attributes to dump,
     for instance "mac_address", "attributes.Username"`,
 	Run: func(cmd *cobra.Command, args []string) {
-		runCmd(cmd, args, model.GET)
+		if err := Singleton.Run(model.GET, args); err != nil {
+			Singleton.Log.Fatal(err)
+		}
 	},
 }
 
