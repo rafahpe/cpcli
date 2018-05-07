@@ -27,7 +27,7 @@ var unixtimeCmd = &cobra.Command{
 	Short: "Get the current time as unix timestamp",
 	Long:  "Get the current time as unix timestamp",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Print(int32(time.Now().Unix()))
+		fmt.Println(int32(time.Now().Unix()))
 	},
 }
 
