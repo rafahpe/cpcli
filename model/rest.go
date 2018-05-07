@@ -29,37 +29,6 @@ const (
 	PATCH         = "PATCH"
 )
 
-// HalLink is a link inside a struct
-type halLink struct {
-	Href string `json:"href"`
-}
-
-// HalLinks is returned by REST endpoints that return multiple objects
-type halLinks struct {
-	Self  halLink `json:"self"`
-	First halLink `json:"first"`
-	Last  halLink `json:"last"`
-	Prev  halLink `json:"prev"`
-	Next  halLink `json:"next"`
-}
-
-// WrappedItems wraps an array of Reply items
-type wrappedItems struct {
-	Items []RawReply `json:"items"`
-}
-
-// WrappedReply returned by endpoints that return multiple objects
-type wrappedReply struct {
-	Embedded wrappedItems `json:"_embedded"`
-	Links    halLinks     `json:"_links"`
-}
-
-// Exhaust a channel, dismiss all replies
-func Exhaust(replies Reply) {
-	for replies.Next() {
-	}
-}
-
 // Generic function to perform a REST request
 func rest(ctx context.Context, method Method, url, token string, query map[string]string, request, reply interface{}, skipVerify bool) error {
 	details := RestError{Method: string(method), URL: url}
@@ -126,44 +95,4 @@ func rest(ctx context.Context, method Method, url, token string, query map[strin
 		return details
 	}
 	return nil
-}
-
-// Follow a paginated stream
-func follow(ctx context.Context, method Method, url, token string, query map[string]string, request interface{}, skipVerify bool) (Reply, error) {
-	result := make(chan currentReply)
-	waitme := make(chan error)
-	go func() {
-		defer close(result)
-		var reply RawReply
-		// Open the query and check for error.
-		if err := rest(ctx, method, url, token, query, request, &reply, skipVerify); err != nil {
-			waitme <- err
-			return
-		}
-		// Release the caller
-		close(waitme)
-		// If it is not a wrapped reply, but a strange item, return it straight away
-		var wReply wrappedReply
-		if err := json.Unmarshal(reply, &wReply); err != nil {
-			result <- currentReply{items: []RawReply{reply}}
-			return
-		}
-		// If it is a wrappedReply, iterate on it
-		for {
-			result <- currentReply{items: wReply.Embedded.Items}
-			// Run new request from link provided by HAL
-			url := wReply.Links.Next.Href
-			if url == "" || wReply.Links.Next.Href == wReply.Links.Self.Href {
-				return
-			}
-			if err := rest(ctx, GET, url, token, nil, nil, &wReply, skipVerify); err != nil {
-				result <- currentReply{lastError: err}
-				return
-			}
-		}
-	}()
-	if err := <-waitme; err != nil {
-		return nil, err
-	}
-	return &reply{stream: result}, nil
 }

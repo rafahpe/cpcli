@@ -39,7 +39,7 @@ type Clearpass interface {
 	// Token obtained after authentication / validation
 	Token() string
 	// Do a REST request to the CPPM.
-	Do(ctx context.Context, method Method, path string, request interface{}, params Params) (Reply, error)
+	Do(ctx context.Context, method Method, path string, request interface{}, params Params) *Reply
 }
 
 // Clearpass model
@@ -71,12 +71,12 @@ func (c *clearpass) Token() string {
 }
 
 // Follow a stream of results from an endpoint.
-func (c *clearpass) Do(ctx context.Context, method Method, path string, request interface{}, params Params) (Reply, error) {
+func (c *clearpass) Do(ctx context.Context, method Method, path string, request interface{}, params Params) *Reply {
 	if c.url == "" || c.token == "" {
-		return nil, ErrNotLoggedIn
+		return NewReply(nil, ErrNotLoggedIn)
 	}
 	if params.PageSize < 0 {
-		return nil, ErrPageTooSmall
+		return NewReply(nil, ErrPageTooSmall)
 	}
 	defaults := map[string]string{
 		"filter":          "{}",
@@ -94,11 +94,11 @@ func (c *clearpass) Do(ctx context.Context, method Method, path string, request 
 	if params.Filter != nil && len(params.Filter) > 0 {
 		norm, err := normalize(params.Filter, path)
 		if err != nil {
-			return nil, err
+			return NewReply(nil, err)
 		}
 		val, err := json.Marshal(norm)
 		if err != nil {
-			return nil, err
+			return NewReply(nil, err)
 		}
 		defaults["filter"] = string(val)
 	}

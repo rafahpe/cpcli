@@ -1,6 +1,7 @@
 package term
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -17,17 +18,17 @@ type Options struct {
 }
 
 // Output the feed of replies, printing the given columns (if any)
-func (options Options) Output(pages model.Reply, format []string) error {
+func Output(ctx context.Context, options Options, pages *model.Reply, format []string) error {
 	// If output is CSV-like, dump the header
 	if format != nil && len(format) > 0 && !options.SkipHeaders {
 		fmt.Println(strings.Join(format, ";"))
 	}
 	// Keep reading pages of data
 	p := options.newPaginator()
-	for pages.Next() {
+	for pages.Next(ctx) {
 		// Show next item
 		page := pages.Get()
-		output, err := options.serialize(page, format)
+		output, err := serialize(options, page, format)
 		if err != nil {
 			return err
 		}
@@ -44,7 +45,7 @@ func (options Options) Output(pages model.Reply, format []string) error {
 }
 
 // Serializes a reply according to the options
-func (options Options) serialize(item model.RawReply, format []string) (string, error) {
+func serialize(options Options, item model.RawReply, format []string) (string, error) {
 	if format != nil && len(format) > 0 {
 		return model.ToCSV(item, format), nil
 	}

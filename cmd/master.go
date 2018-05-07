@@ -184,15 +184,7 @@ func (master *Master) Run(method model.Method, args []string) error {
 // Runs the request and outputs the result
 func (master *Master) do(method model.Method, path string, filter model.Filter, request interface{}, format []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
-	feed, err := master.cppm.Do(ctx, method, path, request, model.Params{Filter: filter, PageSize: master.Options.PageSize})
-	if err != nil {
-		cancel()
-		return err
-	}
-	defer func() {
-		// cancel first and then exhaust, so we don't keep hitting the API if not needed
-		cancel()
-		model.Exhaust(feed)
-	}()
-	return master.Options.Output(feed, format)
+	defer cancel()
+	feed := master.cppm.Do(ctx, method, path, request, model.Params{Filter: filter, PageSize: master.Options.PageSize})
+	return term.Output(ctx, master.Options, feed, format)
 }
