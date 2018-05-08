@@ -38,8 +38,8 @@ type Clearpass interface {
 	Validate(ctx context.Context, address, clientID, secret, token, refresh string) (string, string, error)
 	// Token obtained after authentication / validation
 	Token() string
-	// Do a REST request to the CPPM.
-	Do(ctx context.Context, method Method, path string, request interface{}, params Params) *Reply
+	// Request made to the CPPM.
+	Request(method Method, path string, request interface{}, params Params) *Reply
 }
 
 // Clearpass model
@@ -71,7 +71,7 @@ func (c *clearpass) Token() string {
 }
 
 // Follow a stream of results from an endpoint.
-func (c *clearpass) Do(ctx context.Context, method Method, path string, request interface{}, params Params) *Reply {
+func (c *clearpass) Request(method Method, path string, request interface{}, params Params) *Reply {
 	if c.url == "" || c.token == "" {
 		return NewReply(nil, ErrNotLoggedIn)
 	}
@@ -102,5 +102,5 @@ func (c *clearpass) Do(ctx context.Context, method Method, path string, request 
 		}
 		defaults["filter"] = string(val)
 	}
-	return follow(ctx, method, c.url+"/"+path, c.token, defaults, request, c.unsafe)
+	return Request(method, c.url+"/"+path, c.token, defaults, request, c.unsafe)
 }

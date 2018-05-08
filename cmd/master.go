@@ -185,6 +185,6 @@ func (master *Master) Run(method model.Method, args []string) error {
 func (master *Master) do(method model.Method, path string, filter model.Filter, request interface{}, format []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	feed := master.cppm.Do(ctx, method, path, request, model.Params{Filter: filter, PageSize: master.Options.PageSize})
+	feed := master.cppm.Request(method, path, request, model.Params{Filter: filter, PageSize: master.Options.PageSize})
 	return term.Output(ctx, master.Options, feed, format)
 }

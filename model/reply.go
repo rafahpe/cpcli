@@ -11,6 +11,7 @@ type RawReply = json.RawMessage
 
 // Reply is kind of an iterator on rest replies.
 // you can iterate over this with a loop like:
+// r := Request(...)
 // for r.Next(ctx) {
 //   current := r.Get()
 // }
@@ -21,8 +22,11 @@ type Reply struct {
 	current    []RawReply
 	offset     int
 	err        error
-	token      string
+	method     Method
 	nextURL    string
+	token      string
+	query      map[string]string
+	request    interface{}
 	skipVerify bool
 }
 
@@ -51,27 +55,16 @@ type wrappedReply struct {
 	Links    halLinks     `json:"_links"`
 }
 
-// Follow runs a REST request and returns an 'iterable' Reply
-func follow(ctx context.Context, method Method, url, token string, query map[string]string, request interface{}, skipVerify bool) *Reply {
-	r := &Reply{token: token, skipVerify: skipVerify, offset: -1}
-	// Open the query and check for error.
-	var reply RawReply
-	if err := rest(ctx, method, url, token, query, request, &reply, skipVerify); err != nil {
-		r.err = err
-		return r
+// Request runs a REST request and returns an 'iterable' Reply
+func Request(method Method, url, token string, query map[string]string, request interface{}, skipVerify bool) *Reply {
+	return &Reply{
+		method:     method,
+		nextURL:    url,
+		token:      token,
+		query:      query,
+		request:    request,
+		skipVerify: skipVerify,
 	}
-	// If it is a plain reply (not wrapped), just return it straight away
-	var wReply wrappedReply
-	if err := json.Unmarshal(reply, &wReply); err != nil {
-		r.current = []RawReply{reply}
-		return r
-	}
-	// Otherwise, get the link for the next item
-	r.current = wReply.Embedded.Items
-	if nextURL := wReply.Links.Next.Href; nextURL != wReply.Links.Self.Href {
-		r.nextURL = nextURL
-	}
-	return r
 }
 
 // Get returns the current reply
@@ -92,18 +85,23 @@ func (r *Reply) Next(ctx context.Context) bool {
 	}
 	// Otherwise, keep asking for the next data
 	for r.nextURL != "" {
-		var wReply wrappedReply
-		if err := rest(ctx, GET, r.nextURL, r.token, nil, nil, &wReply, r.skipVerify); err != nil {
+		result := RawReply{}
+		if err := rest(ctx, r.method, r.nextURL, r.token, r.query, r.request, &result, r.skipVerify); err != nil {
 			r.err = err
 			return false
 		}
-		// Store the result and move offset to the first item
-		r.current, r.offset, r.nextURL = wReply.Embedded.Items, 0, ""
-		// And update the next URL
-		if nextURL := wReply.Links.Next.Href; nextURL != wReply.Links.Self.Href {
-			r.nextURL = nextURL
+		// If result is not wrapped, we are done
+		wReply := wrappedReply{}
+		if err := json.Unmarshal(result, &wReply); err != nil {
+			r.current, r.offset, r.nextURL = []RawReply{result}, 0, ""
+			return true
 		}
-		// If we got some fresh data, leave
+		// Update the results and the next URL.
+		r.current, r.offset, r.nextURL = wReply.Embedded.Items, 0, ""
+		if nextURL := wReply.Links.Next.Href; nextURL != wReply.Links.Self.Href {
+			r.method, r.nextURL, r.query, r.request = GET, nextURL, nil, nil
+		}
+		// And leave - unless we got an empty response.
 		if len(r.current) > 0 {
 			return true
 		}
