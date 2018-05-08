@@ -29,8 +29,11 @@ const (
 	PATCH         = "PATCH"
 )
 
+// Params for ClearPass request
+type Params map[string]string
+
 // Generic function to perform a REST request
-func rest(ctx context.Context, method Method, url, token string, query map[string]string, request, reply interface{}, skipVerify bool) error {
+func rest(ctx context.Context, method Method, url, token string, query Params, request, reply interface{}, skipVerify bool) error {
 	details := RestError{Method: string(method), URL: url}
 	var body io.Reader
 	if request != nil {

@@ -29,7 +29,7 @@ var loginCmd = &cobra.Command{
 	Long: `Logs into the CPPM using cached credentials, or providing
 a client_id and client_secret to reauthenticate.
 
-  - The Clearpass server address is provided in the 'server' configuration
+  - The ClearPass server address is provided in the 'server' configuration
     variable, CPPM_SERVER environment variable, or with the -h flag.
   - The OAUTH token can be provided in the 'token' configuration variable,
 	the CPPM_TOKEN environment variable, or the -t flag.

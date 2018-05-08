@@ -19,8 +19,6 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	// Using this fork instead of the original because of write file support
-	// See: https://github.com/spf13/viper/pull/287
 	"github.com/spf13/viper"
 )
 
@@ -62,7 +60,7 @@ func init() {
 	// Flags not stored in the config file
 	RootCmd.PersistentFlags().StringVar(&Singleton.ConfigFile, "config", "", "config file (default is $HOME/.cpcli)")
 	RootCmd.PersistentFlags().BoolVarP(&(Singleton.Options.SkipHeaders), "skip-headers", "H", false, "Skip headers when dumping CSV")
-	RootCmd.PersistentFlags().StringArrayVarP(&(Singleton.Filter), "filter", "f", nil, "Filter arguments (e.g. mac=00:86:df:11:22:33)")
+	RootCmd.PersistentFlags().StringArrayVarP(&(Singleton.Query), "query", "q", nil, "Query params (e.g. -q sort=-id -q filter={mac:'00:86:df:11:22:33'}")
 	RootCmd.PersistentFlags().BoolVarP(&(Singleton.Options.PrettyPrint), "prettyprint", "p", false, "Pretty print json output")
 	RootCmd.PersistentFlags().BoolVarP(&(Singleton.Force), "force", "F", false, "When used with 'login', force new authentication")
 

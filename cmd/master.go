@@ -24,7 +24,7 @@ type Master struct {
 	ConfigFile string
 	Options    term.Options
 	Force      bool
-	Filter     []string
+	Query      []string
 }
 
 // Error type for predefined errors
@@ -157,7 +157,7 @@ func (master *Master) Run(method model.Method, args []string) error {
 		return ErrMissingPath
 	}
 	// Read the filter
-	filter, err := master.readJSON(master.Filter)
+	query, err := master.readQuery()
 	if err != nil {
 		return err
 	}
@@ -169,12 +169,12 @@ func (master *Master) Run(method model.Method, args []string) error {
 	path, format := args[0], args[1:]
 	// If stdin is a tty, run just once
 	if reader == nil {
-		return master.do(method, path, filter, nil, format)
+		return master.do(method, path, query, nil, format)
 	}
 	// Otherwise, iterate over the pipe
 	for reader.Next() {
 		item := reader.Get()
-		if err := master.do(method, path, filter, item, format); err != nil {
+		if err := master.do(method, path, query, item, format); err != nil {
 			return err
 		}
 	}
@@ -182,9 +182,9 @@ func (master *Master) Run(method model.Method, args []string) error {
 }
 
 // Runs the request and outputs the result
-func (master *Master) do(method model.Method, path string, filter model.Filter, request interface{}, format []string) error {
+func (master *Master) do(method model.Method, path string, query model.Params, request interface{}, format []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	feed := master.cppm.Request(method, path, request, model.Params{Filter: filter, PageSize: master.Options.PageSize})
+	feed := master.cppm.Request(method, path, query, request)
 	return term.Output(ctx, master.Options, feed, format)
 }

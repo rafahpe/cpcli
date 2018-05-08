@@ -2,21 +2,12 @@ package model
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/url"
 )
 
 // ErrPageTooSmall when paginated commands are givel a page size too small (<=0)
 const ErrPageTooSmall = Error("Page size is too small")
-
-// Params for ClearPass request
-type Params struct {
-	Sort     string // Field to sort by (default "-id")
-	Offset   int    // Start offset (default 0)
-	PageSize int    // Page size (default 25)
-	Filter   Filter // Filter as a JSON object
-}
 
 // Clearpass server interface
 type Clearpass interface {
@@ -39,7 +30,7 @@ type Clearpass interface {
 	// Token obtained after authentication / validation
 	Token() string
 	// Request made to the CPPM.
-	Request(method Method, path string, request interface{}, params Params) *Reply
+	Request(method Method, path string, params Params, request interface{}) *Reply
 }
 
 // Clearpass model
@@ -71,36 +62,27 @@ func (c *clearpass) Token() string {
 }
 
 // Follow a stream of results from an endpoint.
-func (c *clearpass) Request(method Method, path string, request interface{}, params Params) *Reply {
+func (c *clearpass) Request(method Method, path string, params Params, request interface{}) *Reply {
 	if c.url == "" || c.token == "" {
 		return NewReply(nil, ErrNotLoggedIn)
 	}
-	if params.PageSize < 0 {
-		return NewReply(nil, ErrPageTooSmall)
-	}
-	defaults := map[string]string{
-		"filter":          "{}",
-		"sort":            "-id",
-		"offset":          fmt.Sprintf("%d", params.Offset),
-		"limit":           "25",
-		"calculate_count": "false",
-	}
-	if params.Sort != "" {
-		defaults["sort"] = params.Sort
-	}
-	if params.PageSize > 0 {
-		defaults["limit"] = fmt.Sprintf("%d", params.PageSize)
-	}
-	if params.Filter != nil && len(params.Filter) > 0 {
-		norm, err := normalize(params.Filter, path)
-		if err != nil {
-			return NewReply(nil, err)
+	// Clone params, if any
+	var defaults Params
+	if params != nil && len(params) > 0 {
+		defaults := make(Params)
+		for k, v := range params {
+			defaults[k] = v
 		}
-		val, err := json.Marshal(norm)
-		if err != nil {
-			return NewReply(nil, err)
+		if _, ok := defaults["limit"]; ok {
+			defaults["calculate_count"] = "false"
 		}
-		defaults["filter"] = string(val)
+		if filter, ok := defaults["filter"]; ok {
+			norm, err := normalize(filter, path)
+			if err != nil {
+				return NewReply(nil, err)
+			}
+			defaults["filter"] = norm
+		}
 	}
 	return Request(method, c.url+"/"+path, c.token, defaults, request, c.unsafe)
 }
