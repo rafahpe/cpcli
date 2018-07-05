@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"strings"
 )
 
@@ -19,15 +20,15 @@ type RawReply = json.RawMessage
 //   iteration ended with error
 // }
 type Reply struct {
-	current    []RawReply
-	offset     int
-	err        error
-	method     Method
-	nextURL    string
-	token      string
-	query      map[string]string
-	request    interface{}
-	skipVerify bool
+	current []RawReply
+	offset  int
+	err     error
+	method  Method
+	nextURL string
+	token   string
+	query   map[string]string
+	request interface{}
+	client  *http.Client
 }
 
 // HalLink is a link inside a struct
@@ -56,14 +57,14 @@ type wrappedReply struct {
 }
 
 // Request runs a REST request and returns an 'iterable' Reply
-func Request(method Method, url, token string, query map[string]string, request interface{}, skipVerify bool) *Reply {
+func Request(client *http.Client, method Method, url, token string, query map[string]string, request interface{}) *Reply {
 	return &Reply{
-		method:     method,
-		nextURL:    url,
-		token:      token,
-		query:      query,
-		request:    request,
-		skipVerify: skipVerify,
+		method:  method,
+		nextURL: url,
+		token:   token,
+		query:   query,
+		request: request,
+		client:  client,
 	}
 }
 
@@ -86,7 +87,7 @@ func (r *Reply) Next(ctx context.Context) bool {
 	// Otherwise, keep asking for the next data
 	for r.nextURL != "" {
 		result := RawReply{}
-		if err := rest(ctx, r.method, r.nextURL, r.token, r.query, r.request, &result, r.skipVerify); err != nil {
+		if err := rest(ctx, r.client, r.method, r.nextURL, r.token, r.query, r.request, &result); err != nil {
 			r.err = err
 			return false
 		}

@@ -2,8 +2,10 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"path"
 
@@ -47,6 +49,27 @@ const (
 
 // Singleton is the config holder for all commands
 var Singleton Master
+
+func marshalCookie(cookie []*http.Cookie) string {
+	data, err := json.Marshal(cookie)
+	if err == nil {
+		return string(data)
+	}
+	log.Print("Unable to marshal cookie: ", err)
+	return ""
+}
+
+func unmarshalCookie(data string) []*http.Cookie {
+	var err error
+	if data != "" {
+		cookie := make([]*http.Cookie, 0, 8)
+		if err = json.Unmarshal([]byte(data), &cookie); err == nil {
+			return cookie
+		}
+	}
+	log.Print("Unable to unmarshal cookie: ", err)
+	return nil
+}
 
 // OnInit reads in config file and ENV variables if set.
 func (master *Master) OnInit() {
@@ -93,7 +116,9 @@ func (master *Master) OnInit() {
 	token := viper.GetString("token")
 	refresh := viper.GetString("refresh")
 	unsafe := viper.GetBool("unsafe")
-	master.cppm = model.New(server, token, refresh, unsafe)
+	cookie := viper.GetString("cookie")
+	// Try to resd cookie from config
+	master.cppm = model.New(server, token, refresh, unmarshalCookie(cookie), unsafe)
 }
 
 // Make sure the file exists, otherwise Viper complains when saving
@@ -114,6 +139,12 @@ func (master *Master) Save(token, refresh string) error {
 	if refresh != "" {
 		viper.Set("refresh", refresh)
 	}
+	return viper.WriteConfig()
+}
+
+// SaveCookie saves weblogin cookie
+func (master *Master) SaveCookie(cookie []*http.Cookie) error {
+	viper.Set("cookie", marshalCookie(cookie))
 	return viper.WriteConfig()
 }
 
@@ -149,6 +180,42 @@ func (master *Master) Login() (string, string, error) {
 		}
 	}
 	return master.cppm.Login(ctx, server, client, secret, user, password)
+}
+
+// WebLogin into the ClearPass. Return access and refresh token
+func (master *Master) WebLogin() ([]*http.Cookie, error) {
+	server := viper.GetString("server")
+	if server == "" {
+		return nil, ErrMissingserver
+	}
+	client := viper.GetString("user")
+	if client == "" {
+		return nil, ErrMissingCreds
+	}
+	ctx := context.Background()
+	cookie := master.cppm.Cookies()
+	if cookie != nil && !master.Force {
+		creds, err := master.cppm.WebValidate(ctx, server)
+		if err == nil {
+			return creds, nil
+		}
+		fmt.Println("webLogin.run Error: ", err)
+	}
+	password, err := term.Readline(fmt.Sprintf("Password for '%s': ", client), true)
+	if err != nil {
+		return nil, err
+	}
+	return master.cppm.WebLogin(ctx, server, client, password)
+}
+
+// WebLogout from the ClearPass.
+func (master *Master) WebLogout() error {
+	server := viper.GetString("server")
+	if server == "" {
+		return ErrMissingserver
+	}
+	ctx := context.Background()
+	return master.cppm.WebLogout(ctx, server)
 }
 
 // Run runs a command against the Clearpass

@@ -3,7 +3,6 @@ package model
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,39 +15,60 @@ import (
 // ErrNotLoggedIn returned when the user is not logged into CPPM yet
 const ErrNotLoggedIn = Error("Not authorized. Make sure you log in and your account has the proper privileges")
 
-// Method is the HTTP method for the request
-type Method string
-
-// HTTP methods supported
-const (
-	GET    Method = "GET"
-	POST          = "POST"
-	PUT           = "PUT"
-	UPDATE        = "UPDATE"
-	DELETE        = "DELETE"
-	PATCH         = "PATCH"
-)
-
 // Params for ClearPass request
 type Params map[string]string
 
+// Generic raw HTTP request
+func rawRequest(ctx context.Context, client *http.Client, req *http.Request, body []byte) RestError {
+	var bodyReader io.ReadCloser
+	if body != nil {
+		bodyReader = ioutil.NopCloser(bytes.NewReader(body))
+	}
+	detail := RestError{
+		Method: Method(req.Method),
+		URL:    req.URL.RequestURI(),
+		Query:  req.URL.RawQuery,
+		Header: req.Header,
+		Body:   body,
+	}
+	req.Body = bodyReader
+	resp, err := ctxhttp.Do(ctx, client, req)
+	if resp != nil {
+		detail.ReplyHeader = resp.Header
+		if resp.Body != nil {
+			defer resp.Body.Close()
+		}
+	}
+	detail.Err = err
+	detail.StatusCode = resp.StatusCode
+	if err != nil {
+		return detail
+	}
+	if resp.Body != nil {
+		reply, err := ioutil.ReadAll(resp.Body)
+		if detail.Err == nil {
+			detail.Err = err
+		}
+		detail.Reply = reply
+	}
+	return detail
+}
+
 // Generic function to perform a REST request
-func rest(ctx context.Context, method Method, url, token string, query Params, request, reply interface{}, skipVerify bool) error {
-	details := RestError{Method: string(method), URL: url}
-	var body io.Reader
+func rest(ctx context.Context, client *http.Client, method Method, url, token string, query Params, request, reply interface{}) error {
+	var jsonBody []byte
+	var err error
 	if request != nil {
-		jsonBody, err := json.Marshal(request)
+		jsonBody, err = json.Marshal(request)
 		if err != nil {
 			return err
 		}
-		body = bytes.NewReader(jsonBody)
-		details.Body = string(jsonBody)
 	}
-	req, err := http.NewRequest(string(method), url, body)
+	req, err := http.NewRequest(string(method), url, nil)
 	if err != nil {
 		return err
 	}
-	if body != nil {
+	if jsonBody != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	if query != nil && len(query) > 0 {
@@ -57,45 +77,26 @@ func rest(ctx context.Context, method Method, url, token string, query Params, r
 			q.Add(key, val)
 		}
 		req.URL.RawQuery = q.Encode()
-		details.Query = req.URL.RawQuery
 	}
 	if token != "" {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	}
 	req.Header.Set("Accept", "application/json")
-	details.Header = req.Header
-	details.Unsafe = skipVerify
-	client := &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: skipVerify},
-		},
+	detail := rawRequest(ctx, client, req, jsonBody)
+	if detail.Err != nil {
+		return detail
 	}
-	resp, err := ctxhttp.Do(ctx, client, req)
-	if resp != nil {
-		defer resp.Body.Close()
+	if detail.StatusCode == 401 || detail.StatusCode == 403 {
+		detail.Err = ErrNotLoggedIn
+		return detail
 	}
-	if err != nil {
-		details.Err = err
-		return details
+	if detail.StatusCode != 200 {
+		detail.Err = fmt.Errorf("Error: REST Status %d", detail.StatusCode)
+		return detail
 	}
-	respBody, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		details.Err = err
-		return details
-	}
-	details.StatusCode = resp.StatusCode
-	details.Reply = string(respBody)
-	if resp.StatusCode == 401 || resp.StatusCode == 403 {
-		details.Err = ErrNotLoggedIn
-		return details
-	}
-	if resp.StatusCode != 200 {
-		details.Err = fmt.Errorf("Error: REST Status %s", resp.Status)
-		return details
-	}
-	if err := json.Unmarshal(respBody, reply); err != nil {
-		details.Err = err
-		return details
+	if err := json.Unmarshal(detail.Reply, reply); err != nil {
+		detail.Err = err
+		return detail
 	}
 	return nil
 }

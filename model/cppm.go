@@ -2,9 +2,19 @@ package model
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
+	"log"
+	"net/http"
+	"net/http/cookiejar"
 	"net/url"
+	"strings"
+
+	"golang.org/x/net/publicsuffix"
 )
+
+const sessionCookie = "JSESSIONID"
+const dwrSessionCookie = "DWRSESSIONID"
 
 // ErrPageTooSmall when paginated commands are givel a page size too small (<=0)
 const ErrPageTooSmall = Error("Page size is too small")
@@ -29,6 +39,14 @@ type Clearpass interface {
 	Validate(ctx context.Context, address, clientID, secret, token, refresh string) (string, string, error)
 	// Token obtained after authentication / validation
 	Token() string
+	// WebLogin into clearpass with the provided credentials, return token.
+	WebLogin(ctx context.Context, address, username, pass string) ([]*http.Cookie, error)
+	// WebLogout from clearpass.
+	WebLogout(ctx context.Context, address string) error
+	// WebValidate checks the cookie is still useful
+	WebValidate(ctx context.Context, address string) ([]*http.Cookie, error)
+	// Cookies obtained after web authentication
+	Cookies() []*http.Cookie
 	// Request made to the CPPM.
 	Request(method Method, path string, params Params, request interface{}) *Reply
 }
@@ -39,6 +57,7 @@ type clearpass struct {
 	url     string
 	token   string
 	refresh string
+	client  *http.Client
 }
 
 // apiURL returns the URL of the API
@@ -46,19 +65,66 @@ func apiURL(address string) string {
 	return fmt.Sprintf("https://%s/api", url.PathEscape(address))
 }
 
+// webURL returns the URL of the web interface
+func webURL(address string) string {
+	return fmt.Sprintf("https://%s/tips", url.PathEscape(address))
+}
+
 // New creates a Clearpass object with cached IP and token
-func New(address, token, refresh string, skipVerify bool) Clearpass {
+func New(address, token, refresh string, cookies []*http.Cookie, skipVerify bool) Clearpass {
+	jar, err := cookiejar.New(&cookiejar.Options{PublicSuffixList: publicsuffix.List})
+	if err != nil {
+		log.Print("Error creating cookieJar, will not be able to use web login: ", err)
+		jar = nil
+	}
+	queryURL := apiURL(address)
+	if cookies != nil && len(cookies) > 0 {
+		if q, err := url.Parse(queryURL); err != nil {
+			log.Print("Error parsing url, will not be able to use web login: ", err)
+		} else {
+			jar.SetCookies(q, cookies)
+		}
+	}
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: skipVerify},
+		},
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+		Jar: jar,
+	}
 	return &clearpass{
-		unsafe:  skipVerify,
-		url:     apiURL(address),
+		url:     queryURL,
 		token:   token,
 		refresh: refresh,
+		client:  client,
 	}
 }
 
 // Token implements Clearpass interface
 func (c *clearpass) Token() string {
 	return c.token
+}
+
+// Cookie implements Clearpass interface
+func (c *clearpass) Cookies() []*http.Cookie {
+	return c.cookies(c.url)
+}
+
+func (c *clearpass) cookies(cpURL string) []*http.Cookie {
+	queryURL, err := url.Parse(cpURL)
+	if err != nil {
+		return nil
+	}
+	cookies := c.client.Jar.Cookies(queryURL)
+	for _, cookie := range cookies {
+		// Check that at least the session cookie exists
+		if strings.Compare(cookie.Name, sessionCookie) == 0 {
+			return cookies
+		}
+	}
+	return nil
 }
 
 // Follow a stream of results from an endpoint.
@@ -84,5 +150,5 @@ func (c *clearpass) Request(method Method, path string, params Params, request i
 			defaults["filter"] = norm
 		}
 	}
-	return Request(method, c.url+"/"+path, c.token, defaults, request, c.unsafe)
+	return Request(c.client, method, c.url+"/"+path, c.token, defaults, request)
 }

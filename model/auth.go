@@ -2,7 +2,14 @@ package model
 
 import (
 	"context"
+	"errors"
+	"log"
+	"net/http"
+	"net/http/cookiejar"
 	"net/url"
+	"strings"
+
+	"golang.org/x/net/publicsuffix"
 )
 
 // Authentication request
@@ -22,7 +29,7 @@ func (c *clearpass) auth(ctx context.Context, address string, req authRequest) (
 	baseURL := apiURL(address)
 	fullURL := baseURL + "/oauth"
 	rep := authReply{}
-	if err := rest(ctx, POST, fullURL, "", nil, req, &rep, c.unsafe); err != nil {
+	if err := rest(ctx, c.client, POST, fullURL, "", nil, req, &rep); err != nil {
 		return "", "", err
 	}
 	c.url, c.token, c.refresh = baseURL, rep.Token, rep.Refresh
@@ -66,9 +73,179 @@ func (c *clearpass) Validate(ctx context.Context, address, clientID, secret, tok
 	baseURL := apiURL(address)
 	fullURL := baseURL + "/api-client/" + url.PathEscape(clientID)
 	var rep RawReply
-	if err := rest(ctx, GET, fullURL, token, nil, nil, &rep, c.unsafe); err != nil {
+	if err := rest(ctx, c.client, GET, fullURL, token, nil, nil, &rep); err != nil {
 		return "", "", err
 	}
 	c.url, c.token, c.refresh = baseURL, token, ""
 	return c.token, c.refresh, nil
+}
+
+// WebLogin into clearpass with the provided credentials, return token.
+func (c *clearpass) WebLogin(ctx context.Context, address, username, pass string) ([]*http.Cookie, error) {
+	baseURL := webURL(address)
+	cookieURL, err := url.Parse(baseURL)
+	if err != nil {
+		return nil, err
+	}
+	// Reset the cookie jar
+	jar, err := cookiejar.New(&cookiejar.Options{PublicSuffixList: publicsuffix.List})
+	if err != nil {
+		log.Print("Error creating cookieJar, will not be able to use web login: ", err)
+		jar = nil
+	}
+	c.client.Jar = jar
+	// Get the first cookie
+	fullURL := baseURL + "/tipsLogin.action"
+	req, err := http.NewRequest(string(GET), fullURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	detail := rawRequest(ctx, c.client, req, nil)
+	if detail.Err != nil {
+		return nil, err
+	}
+	// Get the DWR cookie
+	fullURL = baseURL + "/dwr/call/plaincall/__System.generateId.dwr"
+	dwrBody := "callCount=1\nc0-scriptName=__System\nc0-methodName=generateId\nc0-id=0\nbatchId=0\ninstanceId=0\npage=%2Ftips%2FtipsLogin.action\nscriptSessionId=\n"
+	req, err = http.NewRequest(string(POST), fullURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "text/plain")
+	detail = rawRequest(ctx, c.client, req, []byte(dwrBody))
+	if detail.Err != nil {
+		return nil, detail
+	}
+	if detail.StatusCode != 200 {
+		detail.Err = errors.New("Failed to get dwr cookie with status != 200")
+		return nil, detail
+	}
+	// Parse the response and add the DWR cookie to the jar
+	dwrCookie := ""
+	parts := strings.SplitN(string(detail.Reply), "dwr.engine.remote.handleCallback(", 2)
+	if len(parts) > 1 {
+		parts = strings.SplitN(parts[1], "\"", 7)
+		if len(parts) > 5 {
+			cookies := c.client.Jar.Cookies(cookieURL)
+			dwrCookie = parts[5]
+			cookies = append(cookies, &http.Cookie{Name: dwrSessionCookie, Value: dwrCookie})
+			jar.SetCookies(cookieURL, cookies)
+		}
+	}
+	// Send the second pointless xhr request
+	fullURL = baseURL + "/dwr/call/plaincall/beforeLogin.getPublisherUrl.dwr"
+	dwrBody = "callCount=1\nnextReverseAjaxIndex=0\nc0-scriptName=beforeLogin\nc0-methodName=getPublisherUrl\nc0-id=0\nbatchId=1\ninstanceId=0\npage=%2Ftips%2FtipsLogin.action\nscriptSessionId=" + dwrCookie + "\n"
+	req, err = http.NewRequest(string(POST), fullURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "text/plain")
+	detail = rawRequest(ctx, c.client, req, []byte(dwrBody))
+	if detail.Err != nil {
+		return nil, detail
+	}
+	if detail.StatusCode != 200 {
+		detail.Err = errors.New("Failed to confirm dwr cookie with status != 200")
+		return nil, detail
+	}
+	// Post the login data
+	fullURL = baseURL + "/tipsLoginSubmit.action"
+	data := make(url.Values)
+	data.Add("F_password", "0")
+	data.Add("username", username)
+	data.Add("password", pass)
+	req, err = http.NewRequest(string(POST), fullURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	detail = rawRequest(ctx, c.client, req, []byte(data.Encode()))
+	if detail.Err != nil {
+		return nil, detail
+	}
+	// Finally, get the cookies
+	cookies := c.Cookies()
+	if cookies == nil {
+		detail.Err = errors.New("Did not receive JSESSIONID cookie")
+		return nil, detail
+	}
+	c.url = apiURL(address)
+	return cookies, nil
+}
+
+// WebLogout from clearpass.
+// TODO: Check out. Does not seem to work.
+func (c *clearpass) WebLogout(ctx context.Context, address string) error {
+	baseURL := webURL(address)
+	// Find dwr session cookie
+	cookies := c.cookies(baseURL)
+	if cookies == nil {
+		return errors.New("Could not retrieve cookies")
+	}
+	dwrCookie := ""
+	for _, cookie := range cookies {
+		if cookie.Name == dwrSessionCookie {
+			dwrCookie = cookie.Value
+			break
+		}
+	}
+	if cookies == nil {
+		return errors.New("Could not retrieve DWR session cookie")
+	}
+	// Call XHR to close the session
+	fullURL := baseURL + "/dwr/call/plaincall/login.destroySession.dwr"
+	dwrBody := "callCount=1\nnextReverseAjaxIndex=0\nc0-scriptName=login\nc0-methodName=destroySession\nc0-id=0\nbatchId=1\ninstanceId=0\npage=%2Ftips%2FtipsContent.action\nscriptSessionId=" + dwrCookie + "\n"
+	req, err := http.NewRequest(string(POST), fullURL, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "text/plain")
+	detail := rawRequest(ctx, c.client, req, []byte(dwrBody))
+	if detail.Err != nil {
+		return detail
+	}
+	if detail.StatusCode != 200 {
+		detail.Err = errors.New("Failed to close session with statuscode != 200")
+		return detail
+	}
+	// Call to checkStatus to make the logout effective
+	fullURL = baseURL + "/tipsLoginCheck.action"
+	req, err = http.NewRequest(string(GET), fullURL, nil)
+	if err != nil {
+		return err
+	}
+	detail = rawRequest(ctx, c.client, req, nil)
+	if detail.Err != nil {
+		return detail
+	}
+	if detail.StatusCode != 302 {
+		detail.Err = errors.New("Did not get a redirect from tipsLoginCheck")
+		return detail
+	}
+	return nil
+}
+
+// WebValidate checks the cookie is still useful
+func (c *clearpass) WebValidate(ctx context.Context, address string) ([]*http.Cookie, error) {
+	baseURL := webURL(address)
+	fullURL := baseURL + "/tipsContent.action"
+	req, err := http.NewRequest(string(GET), fullURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Add("Referer", baseURL+"/tipsLogin.action")
+	req.Header.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Add("Accept-Encoding", "gzip, deflate, br")
+	req.Header.Add("Upgrade-Insecure-Requests", "1")
+	detail := rawRequest(ctx, c.client, req, nil)
+	if detail.StatusCode != 200 {
+		detail.Err = errors.New("StatusCode != 200")
+		return nil, detail
+	}
+	cookies := c.cookies(baseURL)
+	if cookies == nil {
+		detail.Err = errors.New("Missing cookies in reply")
+		return nil, detail
+	}
+	return cookies, nil
 }
