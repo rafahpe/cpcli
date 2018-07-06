@@ -42,15 +42,29 @@ type RestError struct {
 
 // Error implements Error interface
 func (e RestError) Error() string {
-	return strings.Join([]string{
-		e.Err.Error(),
-		fmt.Sprint("Method: ", e.Method),
-		fmt.Sprint("URL: ", e.URL),
-		fmt.Sprint("Query: ", e.Query),
-		fmt.Sprint("Header: ", e.Header),
-		fmt.Sprint("Body: ", string(e.Body)),
-		fmt.Sprint("StatusCode: ", e.StatusCode),
-		fmt.Sprint("ReplyHeader: ", e.ReplyHeader),
-		fmt.Sprint("Reply: ", string(e.Reply)),
-	}, "\n  ")
+	detail := make([]string, 0, 16)
+	if e.Err != nil {
+		detail = append(detail, e.Err.Error())
+	}
+	detail = append(detail, fmt.Sprint("Method: ", e.Method))
+	detail = append(detail, fmt.Sprint("URL: ", e.URL))
+	if e.Query != "" {
+		detail = append(detail, fmt.Sprint("Query: ", e.Query))
+	}
+	if e.Header != nil {
+		detail = append(detail, fmt.Sprint("Header: ", e.Header))
+	}
+	if e.Body != nil {
+		detail = append(detail, fmt.Sprint("Body: ", string(e.Body)))
+	}
+	if e.StatusCode != 0 {
+		detail = append(detail, fmt.Sprint("StatusCode: ", e.StatusCode))
+	}
+	if e.ReplyHeader != nil {
+		detail = append(detail, fmt.Sprint("ReplyHeader: ", e.ReplyHeader))
+	}
+	if e.Reply != nil {
+		detail = append(detail, fmt.Sprint("Reply: ", string(e.Reply)))
+	}
+	return strings.Join(detail, "\n  ")
 }

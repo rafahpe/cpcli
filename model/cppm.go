@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/http/cookiejar"
@@ -49,6 +50,8 @@ type Clearpass interface {
 	Cookies() []*http.Cookie
 	// Request made to the CPPM.
 	Request(method Method, path string, params Params, request interface{}) *Reply
+	// Export so e resource from ClearPass, return the exported stream.
+	Export(ctx context.Context, resource, pass string) (string, io.ReadCloser, error)
 }
 
 // Clearpass model

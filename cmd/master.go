@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -45,6 +46,8 @@ const (
 	ErrMissingCreds = Error("Missing credentials to log into CPPM")
 	// ErrInvalidCreds returned when not allowed to log in
 	ErrInvalidCreds = Error("Credentials are invalid or expired")
+	// ErrMissingResource returned when no resource is provided for export
+	ErrMissingResource = Error("No resource specified for import/export")
 )
 
 // Singleton is the config holder for all commands
@@ -222,6 +225,31 @@ func (master *Master) WebLogout() error {
 	}
 	ctx := context.Background()
 	return master.cppm.WebLogout(ctx, server)
+}
+
+// Export some resource to a zip file named after the resource.
+func (master *Master) Export(args []string) (string, error) {
+	if len(args) < 1 {
+		return "", ErrMissingResource
+	}
+	resource, pass := args[0], ""
+	if len(args) > 1 {
+		pass = args[1]
+	}
+	fname, rc, err := master.cppm.Export(context.Background(), resource, pass)
+	if rc != nil {
+		defer rc.Close()
+	}
+	if err != nil {
+		return "", err
+	}
+	f, err := os.Create(fname)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	_, err = io.Copy(f, rc)
+	return fname, err
 }
 
 // Run runs a command against the Clearpass

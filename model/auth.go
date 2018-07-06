@@ -182,7 +182,9 @@ func (c *clearpass) WebValidate(ctx context.Context, address string) ([]*http.Co
 	}
 	req.Header.Add("Referer", baseURL+"/tipsLogin.action")
 	req.Header.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-	req.Header.Add("Accept-Encoding", "gzip, deflate, br")
+	req.Header.Add("Accept-Encoding", "gzip")
+	req.Header.Add("Accept-Encoding", "deflate")
+	req.Header.Add("Accept-Encoding", "br")
 	req.Header.Add("Upgrade-Insecure-Requests", "1")
 	detail, _ := rawRequest(ctx, c.client, req, nil, false)
 	if detail.Err != nil {
