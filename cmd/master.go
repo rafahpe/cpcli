@@ -166,7 +166,10 @@ func (master *Master) Login() (string, string, error) {
 		if err == nil {
 			return token, refresh, nil
 		}
-		fmt.Println("login.run Error: ", err)
+		if modelErr, ok := err.(model.RestError); ok && modelErr.Err != model.ErrNotLoggedIn {
+			return "", "", err
+		}
+		fmt.Println("Authentication with cached credentials failed: ", err)
 	}
 	secret, err := term.Readline(fmt.Sprintf("Secret for '%s' (leave blank if public client): ", client), true)
 	if err != nil {
@@ -199,7 +202,10 @@ func (master *Master) WebLogin() ([]*http.Cookie, error) {
 		if err == nil {
 			return creds, nil
 		}
-		fmt.Println("webLogin.run Error: ", err)
+		if modelErr, ok := err.(model.RestError); ok && modelErr.Err != model.ErrNotLoggedIn {
+			return nil, err
+		}
+		fmt.Println("Authentication with cached credentials failed: ", err)
 	}
 	password, err := term.Readline(fmt.Sprintf("Password for '%s': ", client), true)
 	if err != nil {

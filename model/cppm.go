@@ -54,7 +54,8 @@ type Clearpass interface {
 // Clearpass model
 type clearpass struct {
 	unsafe  bool
-	url     string
+	apiURL  string
+	webURL  string
 	token   string
 	refresh string
 	client  *http.Client
@@ -77,7 +78,7 @@ func New(address, token, refresh string, cookies []*http.Cookie, skipVerify bool
 		log.Print("Error creating cookieJar, will not be able to use web login: ", err)
 		jar = nil
 	}
-	queryURL := apiURL(address)
+	queryURL := webURL(address)
 	if cookies != nil && len(cookies) > 0 {
 		if q, err := url.Parse(queryURL); err != nil {
 			log.Print("Error parsing url, will not be able to use web login: ", err)
@@ -95,7 +96,8 @@ func New(address, token, refresh string, cookies []*http.Cookie, skipVerify bool
 		Jar: jar,
 	}
 	return &clearpass{
-		url:     queryURL,
+		apiURL:  apiURL(address),
+		webURL:  queryURL,
 		token:   token,
 		refresh: refresh,
 		client:  client,
@@ -109,7 +111,7 @@ func (c *clearpass) Token() string {
 
 // Cookie implements Clearpass interface
 func (c *clearpass) Cookies() []*http.Cookie {
-	return c.cookies(c.url)
+	return c.cookies(c.webURL)
 }
 
 func (c *clearpass) cookies(cpURL string) []*http.Cookie {
@@ -129,7 +131,7 @@ func (c *clearpass) cookies(cpURL string) []*http.Cookie {
 
 // Follow a stream of results from an endpoint.
 func (c *clearpass) Request(method Method, path string, params Params, request interface{}) *Reply {
-	if c.url == "" || c.token == "" {
+	if c.apiURL == "" || c.token == "" {
 		return NewReply(nil, ErrNotLoggedIn)
 	}
 	// Clone params, if any
@@ -150,5 +152,5 @@ func (c *clearpass) Request(method Method, path string, params Params, request i
 			defaults["filter"] = norm
 		}
 	}
-	return Request(c.client, method, c.url+"/"+path, c.token, defaults, request)
+	return Request(c.client, method, c.apiURL+"/"+path, c.token, defaults, request)
 }

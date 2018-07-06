@@ -32,7 +32,7 @@ func (c *clearpass) auth(ctx context.Context, address string, req authRequest) (
 	if err := rest(ctx, c.client, POST, fullURL, "", nil, req, &rep); err != nil {
 		return "", "", err
 	}
-	c.url, c.token, c.refresh = baseURL, rep.Token, rep.Refresh
+	c.apiURL, c.webURL, c.token, c.refresh = baseURL, webURL(address), rep.Token, rep.Refresh
 	return c.token, c.refresh, nil
 }
 
@@ -76,11 +76,11 @@ func (c *clearpass) Validate(ctx context.Context, address, clientID, secret, tok
 	if err := rest(ctx, c.client, GET, fullURL, token, nil, nil, &rep); err != nil {
 		return "", "", err
 	}
-	c.url, c.token, c.refresh = baseURL, token, ""
+	c.apiURL, c.webURL, c.token, c.refresh = baseURL, webURL(address), token, ""
 	return c.token, c.refresh, nil
 }
 
-// WebLogin into clearpass with the provided credentials, return token.
+// WebLogin into clearpass with the provided credentials, return cookies.
 func (c *clearpass) WebLogin(ctx context.Context, address, username, pass string) ([]*http.Cookie, error) {
 	baseURL := webURL(address)
 	cookieURL, err := url.Parse(baseURL)
@@ -100,7 +100,7 @@ func (c *clearpass) WebLogin(ctx context.Context, address, username, pass string
 	if err != nil {
 		return nil, err
 	}
-	detail := rawRequest(ctx, c.client, req, nil)
+	detail, _ := rawRequest(ctx, c.client, req, nil, false)
 	if detail.Err != nil {
 		return nil, err
 	}
@@ -112,7 +112,7 @@ func (c *clearpass) WebLogin(ctx context.Context, address, username, pass string
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "text/plain")
-	detail = rawRequest(ctx, c.client, req, []byte(dwrBody))
+	detail, _ = rawRequest(ctx, c.client, req, []byte(dwrBody), false)
 	if detail.Err != nil {
 		return nil, detail
 	}
@@ -140,7 +140,7 @@ func (c *clearpass) WebLogin(ctx context.Context, address, username, pass string
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "text/plain")
-	detail = rawRequest(ctx, c.client, req, []byte(dwrBody))
+	detail, _ = rawRequest(ctx, c.client, req, []byte(dwrBody), false)
 	if detail.Err != nil {
 		return nil, detail
 	}
@@ -159,17 +159,40 @@ func (c *clearpass) WebLogin(ctx context.Context, address, username, pass string
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	detail = rawRequest(ctx, c.client, req, []byte(data.Encode()))
+	detail, _ = rawRequest(ctx, c.client, req, []byte(data.Encode()), false)
 	if detail.Err != nil {
 		return nil, detail
 	}
-	// Finally, get the cookies
-	cookies := c.Cookies()
-	if cookies == nil {
-		detail.Err = errors.New("Did not receive JSESSIONID cookie")
+	// Finally, validate
+	cookies, err := c.WebValidate(ctx, address)
+	if err != nil {
+		return nil, err
+	}
+	c.webURL, c.apiURL = baseURL, apiURL(address)
+	return cookies, nil
+}
+
+// WebValidate checks the cookie is still useful
+func (c *clearpass) WebValidate(ctx context.Context, address string) ([]*http.Cookie, error) {
+	baseURL := webURL(address)
+	fullURL := baseURL + "/tipsContent.action"
+	req, err := http.NewRequest(string(GET), fullURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Add("Referer", baseURL+"/tipsLogin.action")
+	req.Header.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Add("Accept-Encoding", "gzip, deflate, br")
+	req.Header.Add("Upgrade-Insecure-Requests", "1")
+	detail, _ := rawRequest(ctx, c.client, req, nil, false)
+	if detail.Err != nil {
 		return nil, detail
 	}
-	c.url = apiURL(address)
+	cookies := c.cookies(baseURL)
+	if detail.StatusCode != 200 || cookies == nil || len(cookies) < 2 {
+		detail.Err = ErrNotLoggedIn
+		return nil, detail
+	}
 	return cookies, nil
 }
 
@@ -200,7 +223,7 @@ func (c *clearpass) WebLogout(ctx context.Context, address string) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "text/plain")
-	detail := rawRequest(ctx, c.client, req, []byte(dwrBody))
+	detail, _ := rawRequest(ctx, c.client, req, []byte(dwrBody), false)
 	if detail.Err != nil {
 		return detail
 	}
@@ -214,7 +237,7 @@ func (c *clearpass) WebLogout(ctx context.Context, address string) error {
 	if err != nil {
 		return err
 	}
-	detail = rawRequest(ctx, c.client, req, nil)
+	detail, _ = rawRequest(ctx, c.client, req, nil, false)
 	if detail.Err != nil {
 		return detail
 	}
@@ -223,29 +246,4 @@ func (c *clearpass) WebLogout(ctx context.Context, address string) error {
 		return detail
 	}
 	return nil
-}
-
-// WebValidate checks the cookie is still useful
-func (c *clearpass) WebValidate(ctx context.Context, address string) ([]*http.Cookie, error) {
-	baseURL := webURL(address)
-	fullURL := baseURL + "/tipsContent.action"
-	req, err := http.NewRequest(string(GET), fullURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Add("Referer", baseURL+"/tipsLogin.action")
-	req.Header.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-	req.Header.Add("Accept-Encoding", "gzip, deflate, br")
-	req.Header.Add("Upgrade-Insecure-Requests", "1")
-	detail := rawRequest(ctx, c.client, req, nil)
-	if detail.StatusCode != 200 {
-		detail.Err = errors.New("StatusCode != 200")
-		return nil, detail
-	}
-	cookies := c.cookies(baseURL)
-	if cookies == nil {
-		detail.Err = errors.New("Missing cookies in reply")
-		return nil, detail
-	}
-	return cookies, nil
 }

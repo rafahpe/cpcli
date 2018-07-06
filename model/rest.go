@@ -19,39 +19,44 @@ const ErrNotLoggedIn = Error("Not authorized. Make sure you log in and your acco
 type Params map[string]string
 
 // Generic raw HTTP request
-func rawRequest(ctx context.Context, client *http.Client, req *http.Request, body []byte) RestError {
+func rawRequest(ctx context.Context, client *http.Client, req *http.Request, body []byte, stream bool) (RestError, io.ReadCloser) {
 	var bodyReader io.ReadCloser
+	var resultReader io.ReadCloser
 	if body != nil {
 		bodyReader = ioutil.NopCloser(bytes.NewReader(body))
 	}
 	detail := RestError{
 		Method: Method(req.Method),
-		URL:    req.URL.RequestURI(),
+		URL:    req.URL.String(),
 		Query:  req.URL.RawQuery,
 		Header: req.Header,
 		Body:   body,
 	}
 	req.Body = bodyReader
 	resp, err := ctxhttp.Do(ctx, client, req)
+	detail.Err = err
 	if resp != nil {
+		detail.StatusCode = resp.StatusCode
 		detail.ReplyHeader = resp.Header
 		if resp.Body != nil {
-			defer resp.Body.Close()
+			if stream && err == nil {
+				resultReader = resp.Body
+			} else {
+				defer resp.Body.Close()
+			}
+		}
+		if err != nil {
+			return detail, nil
+		}
+		if resp.Body != nil && !stream {
+			reply, err := ioutil.ReadAll(resp.Body)
+			if detail.Err == nil {
+				detail.Err = err
+			}
+			detail.Reply = reply
 		}
 	}
-	detail.Err = err
-	detail.StatusCode = resp.StatusCode
-	if err != nil {
-		return detail
-	}
-	if resp.Body != nil {
-		reply, err := ioutil.ReadAll(resp.Body)
-		if detail.Err == nil {
-			detail.Err = err
-		}
-		detail.Reply = reply
-	}
-	return detail
+	return detail, resultReader
 }
 
 // Generic function to perform a REST request
@@ -82,7 +87,7 @@ func rest(ctx context.Context, client *http.Client, method Method, url, token st
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	}
 	req.Header.Set("Accept", "application/json")
-	detail := rawRequest(ctx, client, req, jsonBody)
+	detail, _ := rawRequest(ctx, client, req, jsonBody, false)
 	if detail.Err != nil {
 		return detail
 	}
