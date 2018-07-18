@@ -93,7 +93,7 @@ func (r *Reply) Next(ctx context.Context) bool {
 		}
 		// If result is not wrapped, we are done
 		wReply := wrappedReply{}
-		if err := json.Unmarshal(result, &wReply); err != nil {
+		if err := json.Unmarshal(result, &wReply); err != nil || wReply.Embedded.Items == nil {
 			r.current, r.offset, r.nextURL = []RawReply{result}, 0, ""
 			return true
 		}
