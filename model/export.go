@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// Export so e resource from ClearPass, return the exported stream.
+// Export some resource from ClearPass, return the exported stream.
 func (c *clearpass) Export(ctx context.Context, resource, pass string) (string, io.ReadCloser, error) {
 	baseURL := c.webURL
 	fullURL := baseURL + "/tipsExport.action"
@@ -24,7 +24,7 @@ func (c *clearpass) Export(ctx context.Context, resource, pass string) (string, 
 	req.Header.Add("Accept-Encoding", "br")
 	data := make(url.Values)
 	data.Add("type", resource)
-	data.Add("encyptionPassword", pass) // ues, it is mispelled in ClearPass
+	data.Add("encyptionPassword", pass) // yes, it is mispelled in ClearPass
 	detail, stream := rawRequest(ctx, c.client, req, []byte(data.Encode()), true)
 	if detail.Err != nil {
 		if stream != nil {

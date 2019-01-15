@@ -252,6 +252,18 @@ func (master *Master) Export(args []string) (string, error) {
 	return fname, err
 }
 
+// Import some resource from a zip file.
+func (master *Master) Import(args []string) error {
+	if len(args) < 2 {
+		return ErrMissingResource
+	}
+	fileName, resource, pass := args[0], args[1], ""
+	if len(args) > 1 {
+		pass = args[2]
+	}
+	return master.cppm.Import(context.Background(), fileName, resource, pass)
+}
+
 // Run runs a command against the Clearpass
 func (master *Master) Run(method model.Method, args []string) error {
 	if len(args) < 1 {
@@ -270,22 +282,21 @@ func (master *Master) Run(method model.Method, args []string) error {
 	path, format := args[0], args[1:]
 	// If stdin is a tty, run just once
 	if reader == nil {
-		return master.do(method, path, query, nil, format)
+		reader = term.Once(nil)
 	}
-	// Otherwise, iterate over the pipe
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	for reader.Next() {
-		item := reader.Get()
-		if err := master.do(method, path, query, item, format); err != nil {
+		// Beware of typed nil! reader.Get() may be nil, but it's of type json.RawMessage
+		// body, on the other hand, will be untyped nil.
+		var body interface{}
+		if item := reader.Get(); item != nil {
+			body = item
+		}
+		feed := master.cppm.Request(method, path, query, body)
+		if err := term.Output(ctx, master.Options, feed, format); err != nil {
 			return err
 		}
 	}
 	return reader.Error()
-}
-
-// Runs the request and outputs the result
-func (master *Master) do(method model.Method, path string, query model.Params, request interface{}, format []string) error {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	feed := master.cppm.Request(method, path, query, request)
-	return term.Output(ctx, master.Options, feed, format)
 }

@@ -55,7 +55,7 @@ func (c *clearpass) Login(ctx context.Context, address, clientID, secret, userna
 
 // Validate the token is still useful
 func (c *clearpass) Validate(ctx context.Context, address, clientID, secret, token, refresh string) (string, string, error) {
-	// If there is arefresh token, try to refresh auth
+	// If there is a refresh token, try to refresh auth
 	if refresh != "" {
 		req := authRequest{
 			"grant_type":    "refresh_token",

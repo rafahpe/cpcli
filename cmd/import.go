@@ -15,28 +15,29 @@
 package cmd
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
-	// Using this fork instead of the original because of write file support
-	// See: https://github.com/spf13/viper/pull/287
 )
 
-type webLogoutCmdP struct{ *cobra.Command }
+// exportCmd represents the export command
+var importCmd = &cobra.Command{
+	Use:   "import",
+	Short: "Import some resource",
+	Long: `Import a resource using the Web UI.
 
-// logoutCmd represents the login command
-var webLogoutCmd = &cobra.Command{
-	Use:   "weblogout",
-	Short: "Log out from the CPPM HTTP interface",
-	Long:  `Logs out from the the CPPM HTTP interface`,
-	Args:  cobra.NoArgs,
+  - First argument is the path of the file to import
+  - Second argument is the resource name: "Service", "Devices", etc.
+  - Third argument is the password to protect the downloaded zip file.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		// Log to Stderr without timestamps
-		if err := Singleton.WebLogout(); err != nil {
-			Singleton.Log.Fatal("WebLogout error: ", err)
+		if err := Singleton.Import(args); err != nil {
+			Singleton.Log.Fatal(err)
+		} else {
+			fmt.Println("Resource", args[1], "from file", args[0])
 		}
-		Singleton.Log.Print("Logout completed")
 	},
 }
 
 func init() {
-	RootCmd.AddCommand(webLogoutCmd)
+	RootCmd.AddCommand(importCmd)
 }

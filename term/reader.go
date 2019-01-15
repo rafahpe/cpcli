@@ -31,6 +31,17 @@ type reader struct {
 	err     error
 }
 
+// once implements a one-shot Input
+type once struct {
+	value json.RawMessage
+	done  bool
+}
+
+// Once creates an Input that returns a single value
+func Once(msg json.RawMessage) Input {
+	return &once{value: msg}
+}
+
 // Stdin returns a Input stream if stdin is not a tty, nil otherwise
 func Stdin() (Input, error) {
 	stat, err := os.Stdin.Stat()
@@ -80,12 +91,29 @@ func (i *reader) Next() bool {
 	return true
 }
 
-// Get implements model.Reply
+// Get implements Input
 func (i *reader) Get() json.RawMessage {
 	return i.current
 }
 
-// Error implements model.Reply
+// Error implements Imput
 func (i *reader) Error() error {
 	return i.err
+}
+
+// Next implements Input
+func (o *once) Next() bool {
+	done := o.done
+	o.done = true
+	return !done
+}
+
+// Get implements Input
+func (o *once) Get() json.RawMessage {
+	return o.value
+}
+
+// Error implements Input
+func (o *once) Error() error {
+	return nil
 }
